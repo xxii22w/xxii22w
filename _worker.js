@@ -1,877 +1,770 @@
-// Cloudflare Worker - 简化版优选工具
-// 仅保留优选域名、优选IP、GitHub、上报和节点生成功能
+var __defProp = Object.defineProperty;
+var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
-// 默认配置
-let customPreferredIPs = [];
-let customPreferredDomains = [];
-let epd = true;  // 启用优选域名
-let epi = true;  // 启用优选IP
-let egi = true;  // 启用GitHub优选
-let ev = true;   // 启用VLESS协议
-let et = false;  // 启用Trojan协议
-let vm = false;  // 启用VMess协议
-let scu = 'https://url.v1.mk/sub';  // 订阅转换地址
-
-// 默认优选域名列表
-const directDomains = [
-    { name: "cloudflare.182682.xyz", domain: "cloudflare.182682.xyz" },
-    { domain: "freeyx.cloudflare88.eu.org" },
-    { domain: "bestcf.top" },
-    { domain: "cdn.2020111.xyz" },
-    { domain: "cf.0sm.com" },
-    { domain: "cf.090227.xyz" },
-    { domain: "cf.zhetengsha.eu.org" },
-    { domain: "cfip.1323123.xyz" },
-    { domain: "cloudflare-ip.mofashi.ltd" },
-    { domain: "cf.877771.xyz" },
-    { domain: "xn--b6gac.eu.org" }
+// _worker.js
+var epd = true;
+var epi = true;
+var egi = true;
+var ev = true;
+var scu = "https://url.v1.mk/sub";
+var directDomains = [
+  { name: "cloudflare.182682.xyz", domain: "cloudflare.182682.xyz" },
+  { domain: "freeyx.cloudflare88.eu.org" },
+  { domain: "bestcf.top" },
+  { domain: "cdn.2020111.xyz" },
+  { domain: "cf.0sm.com" },
+  { domain: "cf.090227.xyz" },
+  { domain: "cf.zhetengsha.eu.org" },
+  { domain: "cfip.1323123.xyz" },
+  { domain: "cloudflare-ip.mofashi.ltd" },
+  { domain: "cf.877771.xyz" },
+  { domain: "xn--b6gac.eu.org" }
 ];
-
-// 默认优选IP来源URL
-const defaultIPURL = 'https://raw.githubusercontent.com/qwer-search/bestip/refs/heads/main/kejilandbestip.txt';
-
-// UUID验证
+var defaultIPURL = "https://raw.githubusercontent.com/qwer-search/bestip/refs/heads/main/kejilandbestip.txt";
 function isValidUUID(str) {
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    return uuidRegex.test(str);
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
 }
-
-// 从环境变量获取配置
-function getConfigValue(key, defaultValue) {
-    return defaultValue || '';
-}
-
-// 获取动态IP列表（支持IPv4/IPv6和运营商筛选）
+__name(isValidUUID, "isValidUUID");
 async function fetchDynamicIPs(ipv4Enabled = true, ipv6Enabled = true, ispMobile = true, ispUnicom = true, ispTelecom = true) {
-    const v4Url = "https://www.wetest.vip/page/cloudflare/address_v4.html";
-    const v6Url = "https://www.wetest.vip/page/cloudflare/address_v6.html";
-    let results = [];
-
-    try {
-        const fetchPromises = [];
-        if (ipv4Enabled) {
-            fetchPromises.push(fetchAndParseWetest(v4Url));
-        } else {
-            fetchPromises.push(Promise.resolve([]));
-        }
-        if (ipv6Enabled) {
-            fetchPromises.push(fetchAndParseWetest(v6Url));
-        } else {
-            fetchPromises.push(Promise.resolve([]));
-        }
-
-        const [ipv4List, ipv6List] = await Promise.all(fetchPromises);
-        results = [...ipv4List, ...ipv6List];
-        
-        // 按运营商筛选
-        if (results.length > 0) {
-            results = results.filter(item => {
-                const isp = item.isp || '';
-                if (isp.includes('移动') && !ispMobile) return false;
-                if (isp.includes('联通') && !ispUnicom) return false;
-                if (isp.includes('电信') && !ispTelecom) return false;
-                return true;
-            });
-        }
-        
-        return results.length > 0 ? results : [];
-    } catch (e) {
-        return [];
+  const v4Url = "https://www.wetest.vip/page/cloudflare/address_v4.html";
+  const v6Url = "https://www.wetest.vip/page/cloudflare/address_v6.html";
+  let results = [];
+  try {
+    const fetchPromises = [];
+    if (ipv4Enabled) {
+      fetchPromises.push(fetchAndParseWetest(v4Url));
+    } else {
+      fetchPromises.push(Promise.resolve([]));
     }
+    if (ipv6Enabled) {
+      fetchPromises.push(fetchAndParseWetest(v6Url));
+    } else {
+      fetchPromises.push(Promise.resolve([]));
+    }
+    const [ipv4List, ipv6List] = await Promise.all(fetchPromises);
+    results = [...ipv4List, ...ipv6List];
+    if (results.length > 0) {
+      results = results.filter((item) => {
+        const isp = item.isp || "";
+        if (isp.includes("\u79FB\u52A8") && !ispMobile) return false;
+        if (isp.includes("\u8054\u901A") && !ispUnicom) return false;
+        if (isp.includes("\u7535\u4FE1") && !ispTelecom) return false;
+        return true;
+      });
+    }
+    return results.length > 0 ? results : [];
+  } catch (e) {
+    return [];
+  }
 }
-
-// 解析wetest页面
+__name(fetchDynamicIPs, "fetchDynamicIPs");
 async function fetchAndParseWetest(url) {
-    try {
-        const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-        if (!response.ok) return [];
-        const html = await response.text();
-        const results = [];
-        const rowRegex = /<tr[\s\S]*?<\/tr>/g;
-        const cellRegex = /<td data-label="线路名称">(.+?)<\/td>[\s\S]*?<td data-label="优选地址">([\d.:a-fA-F]+)<\/td>[\s\S]*?<td data-label="数据中心">(.+?)<\/td>/;
-
-        let match;
-        while ((match = rowRegex.exec(html)) !== null) {
-            const rowHtml = match[0];
-            const cellMatch = rowHtml.match(cellRegex);
-            if (cellMatch && cellMatch[1] && cellMatch[2]) {
-                const colo = cellMatch[3] ? cellMatch[3].trim().replace(/<.*?>/g, '') : '';
-                results.push({
-                    isp: cellMatch[1].trim().replace(/<.*?>/g, ''),
-                    ip: cellMatch[2].trim(),
-                    colo: colo
-                });
-            }
-        }
-        return results;
-    } catch (error) {
-        return [];
-    }
-}
-
-// 整理成数组
-async function 整理成数组(内容) {
-    var 替换后的内容 = 内容.replace(/[	"'\r\n]+/g, ',').replace(/,+/g, ',');
-    if (替换后的内容.charAt(0) == ',') 替换后的内容 = 替换后的内容.slice(1);
-    if (替换后的内容.charAt(替换后的内容.length - 1) == ',') 替换后的内容 = 替换后的内容.slice(0, 替换后的内容.length - 1);
-    const 地址数组 = 替换后的内容.split(',');
-    return 地址数组;
-}
-
-// 请求优选API
-async function 请求优选API(urls, 默认端口 = '443', 超时时间 = 3000) {
-    if (!urls?.length) return [];
-    const results = new Set();
-    await Promise.allSettled(urls.map(async (url) => {
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 超时时间);
-            const response = await fetch(url, { signal: controller.signal });
-            clearTimeout(timeoutId);
-            let text = '';
-            try {
-                const buffer = await response.arrayBuffer();
-                const contentType = (response.headers.get('content-type') || '').toLowerCase();
-                const charset = contentType.match(/charset=([^\s;]+)/i)?.[1]?.toLowerCase() || '';
-
-                // 根据 Content-Type 响应头判断编码优先级
-                let decoders = ['utf-8', 'gb2312']; // 默认优先 UTF-8
-                if (charset.includes('gb') || charset.includes('gbk') || charset.includes('gb2312')) {
-                    decoders = ['gb2312', 'utf-8']; // 如果明确指定 GB 系编码，优先尝试 GB2312
-                }
-
-                // 尝试多种编码解码
-                let decodeSuccess = false;
-                for (const decoder of decoders) {
-                    try {
-                        const decoded = new TextDecoder(decoder).decode(buffer);
-                        // 验证解码结果的有效性
-                        if (decoded && decoded.length > 0 && !decoded.includes('\ufffd')) {
-                            text = decoded;
-                            decodeSuccess = true;
-                            break;
-                        } else if (decoded && decoded.length > 0) {
-                            // 如果有替换字符 (U+FFFD)，说明编码不匹配，继续尝试下一个编码
-                            continue;
-                        }
-                    } catch (e) {
-                        // 该编码解码失败，尝试下一个
-                        continue;
-                    }
-                }
-
-                // 如果所有编码都失败或无效，尝试 response.text()
-                if (!decodeSuccess) {
-                    text = await response.text();
-                }
-
-                // 如果返回的是空或无效数据，返回
-                if (!text || text.trim().length === 0) {
-                    return;
-                }
-            } catch (e) {
-                console.error('Failed to decode response:', e);
-                return;
-            }
-            const lines = text.trim().split('\n').map(l => l.trim()).filter(l => l);
-            const isCSV = lines.length > 1 && lines[0].includes(',');
-            const IPV6_PATTERN = /^[^\[\]]*:[^\[\]]*:[^\[\]]/;
-            if (!isCSV) {
-                lines.forEach(line => {
-                    const hashIndex = line.indexOf('#');
-                    const [hostPart, remark] = hashIndex > -1 ? [line.substring(0, hashIndex), line.substring(hashIndex)] : [line, ''];
-                    let hasPort = false;
-                    if (hostPart.startsWith('[')) {
-                        hasPort = /\]:(\d+)$/.test(hostPart);
-                    } else {
-                        const colonIndex = hostPart.lastIndexOf(':');
-                        hasPort = colonIndex > -1 && /^\d+$/.test(hostPart.substring(colonIndex + 1));
-                    }
-                    const port = new URL(url).searchParams.get('port') || 默认端口;
-                    results.add(hasPort ? line : `${hostPart}:${port}${remark}`);
-                });
-            } else {
-                const headers = lines[0].split(',').map(h => h.trim());
-                const dataLines = lines.slice(1);
-                if (headers.includes('IP地址') && headers.includes('端口') && headers.includes('数据中心')) {
-                    const ipIdx = headers.indexOf('IP地址'), portIdx = headers.indexOf('端口');
-                    const remarkIdx = headers.indexOf('国家') > -1 ? headers.indexOf('国家') :
-                        headers.indexOf('城市') > -1 ? headers.indexOf('城市') : headers.indexOf('数据中心');
-                    const tlsIdx = headers.indexOf('TLS');
-                    dataLines.forEach(line => {
-                        const cols = line.split(',').map(c => c.trim());
-                        if (tlsIdx !== -1 && cols[tlsIdx]?.toLowerCase() !== 'true') return;
-                        const wrappedIP = IPV6_PATTERN.test(cols[ipIdx]) ? `[${cols[ipIdx]}]` : cols[ipIdx];
-                        results.add(`${wrappedIP}:${cols[portIdx]}#${cols[remarkIdx]}`);
-                    });
-                } else if (headers.some(h => h.includes('IP')) && headers.some(h => h.includes('延迟')) && headers.some(h => h.includes('下载速度'))) {
-                    const ipIdx = headers.findIndex(h => h.includes('IP'));
-                    const delayIdx = headers.findIndex(h => h.includes('延迟'));
-                    const speedIdx = headers.findIndex(h => h.includes('下载速度'));
-                    const port = new URL(url).searchParams.get('port') || 默认端口;
-                    dataLines.forEach(line => {
-                        const cols = line.split(',').map(c => c.trim());
-                        const wrappedIP = IPV6_PATTERN.test(cols[ipIdx]) ? `[${cols[ipIdx]}]` : cols[ipIdx];
-                        results.add(`${wrappedIP}:${port}#CF优选 ${cols[delayIdx]}ms ${cols[speedIdx]}MB/s`);
-                    });
-                }
-            }
-        } catch (e) { }
-    }));
-    return Array.from(results);
-}
-
-// 从GitHub获取优选IP（保留原有功能，同时支持优选API）
-async function fetchAndParseNewIPs(piu) {
-    const url = piu || defaultIPURL;
-    try {
-        const response = await fetch(url);
-        if (!response.ok) return [];
-        const text = await response.text();
-        const results = [];
-        const lines = text.trim().replace(/\r/g, "").split('\n');
-        const regex = /^([^:]+):(\d+)#(.*)$/;
-
-        for (const line of lines) {
-            const trimmedLine = line.trim();
-            if (!trimmedLine) continue;
-            const match = trimmedLine.match(regex);
-            if (match) {
-                results.push({
-                    ip: match[1],
-                    port: parseInt(match[2], 10),
-                    name: match[3].trim() || match[1]
-                });
-            }
-        }
-        return results;
-    } catch (error) {
-        return [];
-    }
-}
-
-// 生成VLESS链接
-function generateLinksFromSource(list, user, workerDomain, disableNonTLS = false, customPath = '/') {
-    const CF_HTTP_PORTS = [80, 8080, 8880, 2052, 2082, 2086, 2095];
-    const CF_HTTPS_PORTS = [443, 2053, 2083, 2087, 2096, 8443];
-    const defaultHttpsPorts = [443];
-    const defaultHttpPorts = disableNonTLS ? [] : [80];
-    const links = [];
-    const wsPath = customPath || '/';
-    const proto = 'vless';
-
-    list.forEach(item => {
-        let nodeNameBase = item.isp ? item.isp.replace(/\s/g, '_') : (item.name || item.domain || item.ip);
-        if (item.colo && item.colo.trim()) {
-            nodeNameBase = `${nodeNameBase}-${item.colo.trim()}`;
-        }
-        const safeIP = item.ip.includes(':') ? `[${item.ip}]` : item.ip;
-        
-        let portsToGenerate = [];
-        
-        if (item.port) {
-            const port = item.port;
-            if (CF_HTTPS_PORTS.includes(port)) {
-                portsToGenerate.push({ port: port, tls: true });
-            } else if (CF_HTTP_PORTS.includes(port)) {
-                portsToGenerate.push({ port: port, tls: false });
-            } else {
-                portsToGenerate.push({ port: port, tls: true });
-            }
-        } else {
-            defaultHttpsPorts.forEach(port => {
-                portsToGenerate.push({ port: port, tls: true });
-            });
-            defaultHttpPorts.forEach(port => {
-                portsToGenerate.push({ port: port, tls: false });
-            });
-        }
-
-        portsToGenerate.forEach(({ port, tls }) => {
-            if (tls) {
-                const wsNodeName = `${nodeNameBase}-${port}-WS-TLS`;
-                const wsParams = new URLSearchParams({ 
-                    encryption: 'none', 
-                    security: 'tls', 
-                    sni: workerDomain, 
-                    fp: 'chrome', 
-                    type: 'ws', 
-                    host: workerDomain, 
-                    path: wsPath
-                });
-                links.push(`${proto}://${user}@${safeIP}:${port}?${wsParams.toString()}#${encodeURIComponent(wsNodeName)}`);
-            } else {
-                const wsNodeName = `${nodeNameBase}-${port}-WS`;
-                const wsParams = new URLSearchParams({
-                    encryption: 'none',
-                    security: 'none',
-                    type: 'ws',
-                    host: workerDomain,
-                    path: wsPath
-                });
-                links.push(`${proto}://${user}@${safeIP}:${port}?${wsParams.toString()}#${encodeURIComponent(wsNodeName)}`);
-            }
-        });
-    });
-    return links;
-}
-
-// 生成Trojan链接
-async function generateTrojanLinksFromSource(list, user, workerDomain, disableNonTLS = false, customPath = '/') {
-    const CF_HTTP_PORTS = [80, 8080, 8880, 2052, 2082, 2086, 2095];
-    const CF_HTTPS_PORTS = [443, 2053, 2083, 2087, 2096, 8443];
-    const defaultHttpsPorts = [443];
-    const defaultHttpPorts = disableNonTLS ? [] : [80];
-    const links = [];
-    const wsPath = customPath || '/';
-    const password = user;  // Trojan使用UUID作为密码
-
-    list.forEach(item => {
-        let nodeNameBase = item.isp ? item.isp.replace(/\s/g, '_') : (item.name || item.domain || item.ip);
-        if (item.colo && item.colo.trim()) {
-            nodeNameBase = `${nodeNameBase}-${item.colo.trim()}`;
-        }
-        const safeIP = item.ip.includes(':') ? `[${item.ip}]` : item.ip;
-        
-        let portsToGenerate = [];
-        
-        if (item.port) {
-            const port = item.port;
-            if (CF_HTTPS_PORTS.includes(port)) {
-                portsToGenerate.push({ port: port, tls: true });
-            } else if (CF_HTTP_PORTS.includes(port)) {
-                if (!disableNonTLS) {
-                    portsToGenerate.push({ port: port, tls: false });
-                }
-            } else {
-                portsToGenerate.push({ port: port, tls: true });
-            }
-        } else {
-            defaultHttpsPorts.forEach(port => {
-                portsToGenerate.push({ port: port, tls: true });
-            });
-            defaultHttpPorts.forEach(port => {
-                portsToGenerate.push({ port: port, tls: false });
-            });
-        }
-
-        portsToGenerate.forEach(({ port, tls }) => {
-            if (tls) {
-                const wsNodeName = `${nodeNameBase}-${port}-Trojan-WS-TLS`;
-                const wsParams = new URLSearchParams({ 
-                    security: 'tls', 
-                    sni: workerDomain, 
-                    fp: 'chrome', 
-                    type: 'ws', 
-                    host: workerDomain, 
-                    path: wsPath
-                });
-                links.push(`trojan://${password}@${safeIP}:${port}?${wsParams.toString()}#${encodeURIComponent(wsNodeName)}`);
-            } else {
-                const wsNodeName = `${nodeNameBase}-${port}-Trojan-WS`;
-                const wsParams = new URLSearchParams({
-                    security: 'none',
-                    type: 'ws',
-                    host: workerDomain,
-                    path: wsPath
-                });
-                links.push(`trojan://${password}@${safeIP}:${port}?${wsParams.toString()}#${encodeURIComponent(wsNodeName)}`);
-            }
-        });
-    });
-    return links;
-}
-
-// 生成VMess链接
-function generateVMessLinksFromSource(list, user, workerDomain, disableNonTLS = false, customPath = '/') {
-    const CF_HTTP_PORTS = [80, 8080, 8880, 2052, 2082, 2086, 2095];
-    const CF_HTTPS_PORTS = [443, 2053, 2083, 2087, 2096, 8443];
-    const defaultHttpsPorts = [443];
-    const defaultHttpPorts = disableNonTLS ? [] : [80];
-    const links = [];
-    const wsPath = customPath || '/';
-
-    list.forEach(item => {
-        let nodeNameBase = item.isp ? item.isp.replace(/\s/g, '_') : (item.name || item.domain || item.ip);
-        if (item.colo && item.colo.trim()) {
-            nodeNameBase = `${nodeNameBase}-${item.colo.trim()}`;
-        }
-        const safeIP = item.ip.includes(':') ? `[${item.ip}]` : item.ip;
-        
-        let portsToGenerate = [];
-        
-        if (item.port) {
-            const port = item.port;
-            if (CF_HTTPS_PORTS.includes(port)) {
-                portsToGenerate.push({ port: port, tls: true });
-            } else if (CF_HTTP_PORTS.includes(port)) {
-                if (!disableNonTLS) {
-                    portsToGenerate.push({ port: port, tls: false });
-                }
-            } else {
-                portsToGenerate.push({ port: port, tls: true });
-            }
-        } else {
-            defaultHttpsPorts.forEach(port => {
-                portsToGenerate.push({ port: port, tls: true });
-            });
-            defaultHttpPorts.forEach(port => {
-                portsToGenerate.push({ port: port, tls: false });
-            });
-        }
-
-        portsToGenerate.forEach(({ port, tls }) => {
-            const vmessConfig = {
-                v: "2",
-                ps: tls ? `${nodeNameBase}-${port}-VMess-WS-TLS` : `${nodeNameBase}-${port}-VMess-WS`,
-                add: safeIP,
-                port: port.toString(),
-                id: user,
-                aid: "0",
-                scy: "auto",
-                net: "ws",
-                type: "none",
-                host: workerDomain,
-                path: wsPath,
-                tls: tls ? "tls" : "none"
-            };
-            if (tls) {
-                vmessConfig.sni = workerDomain;
-                vmessConfig.fp = "chrome";
-            }
-            const vmessBase64 = btoa(JSON.stringify(vmessConfig));
-            links.push(`vmess://${vmessBase64}`);
-        });
-    });
-    return links;
-}
-
-// 从GitHub IP生成链接（VLESS）
-function generateLinksFromNewIPs(list, user, workerDomain, customPath = '/') {
-    const CF_HTTP_PORTS = [80, 8080, 8880, 2052, 2082, 2086, 2095];
-    const CF_HTTPS_PORTS = [443, 2053, 2083, 2087, 2096, 8443];
-    const links = [];
-    const wsPath = customPath || '/';
-    const proto = 'vless';
-    
-    list.forEach(item => {
-        const nodeName = item.name.replace(/\s/g, '_');
-        const port = item.port;
-        
-        if (CF_HTTPS_PORTS.includes(port)) {
-            const wsNodeName = `${nodeName}-${port}-WS-TLS`;
-            const link = `${proto}://${user}@${item.ip}:${port}?encryption=none&security=tls&sni=${workerDomain}&fp=chrome&type=ws&host=${workerDomain}&path=${wsPath}#${encodeURIComponent(wsNodeName)}`;
-            links.push(link);
-        } else if (CF_HTTP_PORTS.includes(port)) {
-            const wsNodeName = `${nodeName}-${port}-WS`;
-            const link = `${proto}://${user}@${item.ip}:${port}?encryption=none&security=none&type=ws&host=${workerDomain}&path=${wsPath}#${encodeURIComponent(wsNodeName)}`;
-            links.push(link);
-        } else {
-            const wsNodeName = `${nodeName}-${port}-WS-TLS`;
-            const link = `${proto}://${user}@${item.ip}:${port}?encryption=none&security=tls&sni=${workerDomain}&fp=chrome&type=ws&host=${workerDomain}&path=${wsPath}#${encodeURIComponent(wsNodeName)}`;
-            links.push(link);
-        }
-    });
-    return links;
-}
-
-// 生成订阅内容
-async function handleSubscriptionRequest(request, user, customDomain, piu, ipv4Enabled, ipv6Enabled, ispMobile, ispUnicom, ispTelecom, evEnabled, etEnabled, vmEnabled, disableNonTLS, customPath) {
-    const url = new URL(request.url);
-    const finalLinks = [];
-    const workerDomain = url.hostname;  // workerDomain始终是请求的hostname
-    const nodeDomain = customDomain || url.hostname;  // 用户输入的域名用于生成节点时的host/sni
-    const target = url.searchParams.get('target') || 'base64';
-    const wsPath = customPath || '/';
-
-    async function addNodesFromList(list) {
-        // 确保至少有一个协议被启用
-        const hasProtocol = evEnabled || etEnabled || vmEnabled;
-        const useVL = hasProtocol ? evEnabled : true;  // 如果没有选择任何协议，默认使用VLESS
-        
-        if (useVL) {
-            finalLinks.push(...generateLinksFromSource(list, user, nodeDomain, disableNonTLS, wsPath));
-        }
-        if (etEnabled) {
-            finalLinks.push(...await generateTrojanLinksFromSource(list, user, nodeDomain, disableNonTLS, wsPath));
-        }
-        if (vmEnabled) {
-            finalLinks.push(...generateVMessLinksFromSource(list, user, nodeDomain, disableNonTLS, wsPath));
-        }
-    }
-
-    // 原生地址
-    const nativeList = [{ ip: workerDomain, isp: '原生地址' }];
-    await addNodesFromList(nativeList);
-
-    // 优选域名
-    if (epd) {
-        const domainList = directDomains.map(d => ({ ip: d.domain, isp: d.name || d.domain }));
-        await addNodesFromList(domainList);
-    }
-
-    // 优选IP
-    if (epi) {
-        try {
-            const dynamicIPList = await fetchDynamicIPs(ipv4Enabled, ipv6Enabled, ispMobile, ispUnicom, ispTelecom);
-            if (dynamicIPList.length > 0) {
-                await addNodesFromList(dynamicIPList);
-            }
-        } catch (error) {
-            console.error('获取动态IP失败:', error);
-        }
-    }
-
-    // GitHub优选 / 优选API
-    if (egi) {
-        try {
-            // 检查是否是优选API URL（以https://开头）
-            if (piu && piu.toLowerCase().startsWith('https://')) {
-                // 从优选API获取IP列表
-                const 优选API的IP = await 请求优选API([piu]);
-                if (优选API的IP && 优选API的IP.length > 0) {
-                    // 解析IP字符串格式：IP:端口#备注
-                    const IP列表 = 优选API的IP.map(原始地址 => {
-                        // 统一正则: 匹配 域名/IPv4/IPv6地址 + 可选端口 + 可选备注
-                        const regex = /^(\[[\da-fA-F:]+\]|[\d.]+|[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)*)(?::(\d+))?(?:#(.+))?$/;
-                        const match = 原始地址.match(regex);
-
-                        if (match) {
-                            const 节点地址 = match[1].replace(/[\[\]]/g, ''); // 移除IPv6的方括号
-                            const 节点端口 = match[2] || 443;
-                            const 节点备注 = match[3] || 节点地址;
-                            return {
-                                ip: 节点地址,
-                                port: parseInt(节点端口),
-                                name: 节点备注
-                            };
-                        }
-                        return null;
-                    }).filter(item => item !== null);
-                    
-                    if (IP列表.length > 0) {
-                        const hasProtocol = evEnabled || etEnabled || vmEnabled;
-                        const useVL = hasProtocol ? evEnabled : true;
-                        
-                        if (useVL) {
-                            finalLinks.push(...generateLinksFromNewIPs(IP列表, user, nodeDomain, wsPath));
-                        }
-                    }
-                }
-            } else if (piu && piu.includes('\n')) {
-                // 支持多行文本，包含混合格式（优选API URL + IP列表）
-                const 完整优选列表 = await 整理成数组(piu);
-                const 优选API = [], 优选IP = [], 其他节点 = [];
-                
-                for (const 元素 of 完整优选列表) {
-                    if (元素.toLowerCase().startsWith('https://')) {
-                        优选API.push(元素);
-                    } else if (元素.toLowerCase().includes('://')) {
-                        其他节点.push(元素);
-                    } else {
-                        优选IP.push(元素);
-                    }
-                }
-                
-                // 从优选API获取IP
-                if (优选API.length > 0) {
-                    const 优选API的IP = await 请求优选API(优选API);
-                    优选IP.push(...优选API的IP);
-                }
-                
-                // 解析所有IP并生成节点
-                if (优选IP.length > 0) {
-                    const IP列表 = 优选IP.map(原始地址 => {
-                        const regex = /^(\[[\da-fA-F:]+\]|[\d.]+|[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)*)(?::(\d+))?(?:#(.+))?$/;
-                        const match = 原始地址.match(regex);
-
-                        if (match) {
-                            const 节点地址 = match[1].replace(/[\[\]]/g, '');
-                            const 节点端口 = match[2] || 443;
-                            const 节点备注 = match[3] || 节点地址;
-                            return {
-                                ip: 节点地址,
-                                port: parseInt(节点端口),
-                                name: 节点备注
-                            };
-                        }
-                        return null;
-                    }).filter(item => item !== null);
-                    
-                    if (IP列表.length > 0) {
-                        const hasProtocol = evEnabled || etEnabled || vmEnabled;
-                        const useVL = hasProtocol ? evEnabled : true;
-                        
-                        if (useVL) {
-                            finalLinks.push(...generateLinksFromNewIPs(IP列表, user, nodeDomain, wsPath));
-                        }
-                    }
-                }
-            } else {
-                // 原有的GitHub优选逻辑（单URL）
-                const newIPList = await fetchAndParseNewIPs(piu);
-                if (newIPList.length > 0) {
-                    const hasProtocol = evEnabled || etEnabled || vmEnabled;
-                    const useVL = hasProtocol ? evEnabled : true;
-                    
-                    if (useVL) {
-                        finalLinks.push(...generateLinksFromNewIPs(newIPList, user, nodeDomain, wsPath));
-                    }
-                }
-            }
-        } catch (error) {
-            console.error('获取优选IP失败:', error);
-        }
-    }
-
-    if (finalLinks.length === 0) {
-        const errorRemark = "所有节点获取失败";
-        const errorLink = `vless://00000000-0000-0000-0000-000000000000@127.0.0.1:80?encryption=none&security=none&type=ws&host=error.com&path=%2F#${encodeURIComponent(errorRemark)}`;
-        finalLinks.push(errorLink);
-    }
-
-    let subscriptionContent;
-    let contentType = 'text/plain; charset=utf-8';
-    
-    switch (target.toLowerCase()) {
-        case 'clash':
-        case 'clashr':
-            subscriptionContent = generateClashConfig(finalLinks);
-            contentType = 'text/yaml; charset=utf-8';
-            break;
-        case 'surge':
-        case 'surge2':
-        case 'surge3':
-        case 'surge4':
-            subscriptionContent = generateSurgeConfig(finalLinks);
-            break;
-        case 'quantumult':
-        case 'quanx':
-            subscriptionContent = generateQuantumultConfig(finalLinks);
-            break;
-        default:
-            subscriptionContent = btoa(finalLinks.join('\n'));
-    }
-    
-    return new Response(subscriptionContent, {
-        headers: { 
-            'Content-Type': contentType,
-            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-        },
-    });
-}
-
-// 生成Clash配置（简化版，返回YAML格式）
-function generateClashConfig(links) {
-    let yaml = 'port: 7890\n';
-    yaml += 'socks-port: 7891\n';
-    yaml += 'allow-lan: false\n';
-    yaml += 'mode: rule\n';
-    yaml += 'log-level: info\n\n';
-    yaml += 'proxies:\n';
-    
-    const proxyNames = [];
-    links.forEach((link, index) => {
-        const name = decodeURIComponent(link.split('#')[1] || `节点${index + 1}`);
-        proxyNames.push(name);
-        const server = link.match(/@([^:]+):(\d+)/)?.[1] || '';
-        const port = link.match(/@[^:]+:(\d+)/)?.[1] || '443';
-        const uuid = link.match(/vless:\/\/([^@]+)@/)?.[1] || '';
-        const tls = link.includes('security=tls');
-        const path = link.match(/path=([^&#]+)/)?.[1] || '/';
-        const host = link.match(/host=([^&#]+)/)?.[1] || '';
-        const sni = link.match(/sni=([^&#]+)/)?.[1] || '';
-        
-        yaml += `  - name: ${name}\n`;
-        yaml += `    type: vless\n`;
-        yaml += `    server: ${server}\n`;
-        yaml += `    port: ${port}\n`;
-        yaml += `    uuid: ${uuid}\n`;
-        yaml += `    tls: ${tls}\n`;
-        yaml += `    network: ws\n`;
-        yaml += `    ws-opts:\n`;
-        yaml += `      path: ${path}\n`;
-        yaml += `      headers:\n`;
-        yaml += `        Host: ${host}\n`;
-        if (sni) {
-            yaml += `    servername: ${sni}\n`;
-        }
-    });
-    
-    yaml += '\nproxy-groups:\n';
-    yaml += '  - name: PROXY\n';
-    yaml += '    type: select\n';
-    yaml += `    proxies: [${proxyNames.map(n => `'${n}'`).join(', ')}]\n`;
-    yaml += '\nrules:\n';
-    yaml += '  - DOMAIN-SUFFIX,local,DIRECT\n';
-    yaml += '  - IP-CIDR,127.0.0.0/8,DIRECT\n';
-    yaml += '  - GEOIP,CN,DIRECT\n';
-    yaml += '  - MATCH,PROXY\n';
-    
-    return yaml;
-}
-
-// 生成Surge配置
-function generateSurgeConfig(links) {
-    let config = '[Proxy]\n';
-    links.forEach(link => {
-        const name = decodeURIComponent(link.split('#')[1] || '节点');
-        config += `${name} = vless, ${link.match(/@([^:]+):(\d+)/)?.[1] || ''}, ${link.match(/@[^:]+:(\d+)/)?.[1] || '443'}, username=${link.match(/vless:\/\/([^@]+)@/)?.[1] || ''}, tls=${link.includes('security=tls')}, ws=true, ws-path=${link.match(/path=([^&#]+)/)?.[1] || '/'}, ws-headers=Host:${link.match(/host=([^&#]+)/)?.[1] || ''}\n`;
-    });
-    config += '\n[Proxy Group]\nPROXY = select, ' + links.map((_, i) => decodeURIComponent(links[i].split('#')[1] || `节点${i + 1}`)).join(', ') + '\n';
-    return config;
-}
-
-// 生成Quantumult配置
-function generateQuantumultConfig(links) {
-    return btoa(links.join('\n'));
-}
-
-// 在线测试延迟 - 测试IP或域名的延迟
-async function testLatency(host, port = 443, timeout = 5000) {
-    const startTime = Date.now();
-    try {
-        // 解析地址和端口
-        let testHost = host;
-        let testPort = port;
-        
-        // 如果host包含端口，提取出来
-        if (host.includes(':')) {
-            const parts = host.split(':');
-            testHost = parts[0].replace(/[\[\]]/g, ''); // 移除IPv6的方括号
-            testPort = parseInt(parts[1]) || port;
-        }
-        
-        // 构建测试URL
-        const protocol = testPort === 443 || testPort === 8443 ? 'https' : 'http';
-        const testUrl = `${protocol}://${testHost}:${testPort}/cdn-cgi/trace`;
-        
-        // 使用AbortController控制超时
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeout);
-        
-        try {
-            const response = await fetch(testUrl, {
-                signal: controller.signal,
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                }
-            });
-            
-            clearTimeout(timeoutId);
-            
-            const responseTime = Date.now() - startTime;
-            
-            if (response.ok) {
-                const text = await response.text();
-                const ipMatch = text.match(/ip=([^\s]+)/);
-                const locMatch = text.match(/loc=([^\s]+)/);
-                const coloMatch = text.match(/colo=([^\s]+)/);
-                
-                return {
-                    success: true,
-                    host: host,
-                    port: testPort,
-                    latency: responseTime,
-                    ip: ipMatch ? ipMatch[1] : null,
-                    location: locMatch ? locMatch[1] : null,
-                    colo: coloMatch ? coloMatch[1] : null
-                };
-            } else {
-                return {
-                    success: false,
-                    host: host,
-                    port: testPort,
-                    latency: responseTime,
-                    error: `HTTP ${response.status}`
-                };
-            }
-        } catch (fetchError) {
-            clearTimeout(timeoutId);
-            const responseTime = Date.now() - startTime;
-            
-            if (fetchError.name === 'AbortError') {
-                return {
-                    success: false,
-                    host: host,
-                    port: testPort,
-                    latency: timeout,
-                    error: '请求超时'
-                };
-            }
-            
-            return {
-                success: false,
-                host: host,
-                port: testPort,
-                latency: responseTime,
-                error: fetchError.message || '连接失败'
-            };
-        }
-    } catch (error) {
-        const responseTime = Date.now() - startTime;
-        return {
-            success: false,
-            host: host,
-            port: port,
-            latency: responseTime,
-            error: error.message || '未知错误'
-        };
-    }
-}
-
-// 批量测试延迟
-async function batchTestLatency(hosts, port = 443, timeout = 5000, concurrency = 5) {
+  try {
+    const response = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+    if (!response.ok) return [];
+    const html = await response.text();
     const results = [];
-    const chunks = [];
-    
-    // 将hosts分成多个批次
-    for (let i = 0; i < hosts.length; i += concurrency) {
-        chunks.push(hosts.slice(i, i + concurrency));
-    }
-    
-    // 按批次测试
-    for (const chunk of chunks) {
-        const chunkResults = await Promise.allSettled(
-            chunk.map(host => testLatency(host, port, timeout))
-        );
-        
-        chunkResults.forEach((result, index) => {
-            if (result.status === 'fulfilled') {
-                results.push(result.value);
-            } else {
-                results.push({
-                    success: false,
-                    host: chunk[index],
-                    port: port,
-                    latency: timeout,
-                    error: result.reason?.message || '测试失败'
-                });
-            }
+    const rowRegex = /<tr[\s\S]*?<\/tr>/g;
+    const cellRegex = /<td data-label="线路名称">(.+?)<\/td>[\s\S]*?<td data-label="优选地址">([\d.:a-fA-F]+)<\/td>[\s\S]*?<td data-label="数据中心">(.+?)<\/td>/;
+    let match;
+    while ((match = rowRegex.exec(html)) !== null) {
+      const rowHtml = match[0];
+      const cellMatch = rowHtml.match(cellRegex);
+      if (cellMatch && cellMatch[1] && cellMatch[2]) {
+        const colo = cellMatch[3] ? cellMatch[3].trim().replace(/<.*?>/g, "") : "";
+        results.push({
+          isp: cellMatch[1].trim().replace(/<.*?>/g, ""),
+          ip: cellMatch[2].trim(),
+          colo
         });
+      }
     }
-    
-    // 按延迟排序
-    results.sort((a, b) => {
-        if (a.success && !b.success) return -1;
-        if (!a.success && b.success) return 1;
-        return a.latency - b.latency;
-    });
-    
     return results;
+  } catch (error) {
+    return [];
+  }
 }
-
-// 生成iOS 26风格的主页
+__name(fetchAndParseWetest, "fetchAndParseWetest");
+async function \u6574\u7406\u6210\u6570\u7EC4(\u5185\u5BB9) {
+  var \u66FF\u6362\u540E\u7684\u5185\u5BB9 = \u5185\u5BB9.replace(/[	"'\r\n]+/g, ",").replace(/,+/g, ",");
+  if (\u66FF\u6362\u540E\u7684\u5185\u5BB9.charAt(0) == ",") \u66FF\u6362\u540E\u7684\u5185\u5BB9 = \u66FF\u6362\u540E\u7684\u5185\u5BB9.slice(1);
+  if (\u66FF\u6362\u540E\u7684\u5185\u5BB9.charAt(\u66FF\u6362\u540E\u7684\u5185\u5BB9.length - 1) == ",") \u66FF\u6362\u540E\u7684\u5185\u5BB9 = \u66FF\u6362\u540E\u7684\u5185\u5BB9.slice(0, \u66FF\u6362\u540E\u7684\u5185\u5BB9.length - 1);
+  const \u5730\u5740\u6570\u7EC4 = \u66FF\u6362\u540E\u7684\u5185\u5BB9.split(",");
+  return \u5730\u5740\u6570\u7EC4;
+}
+__name(\u6574\u7406\u6210\u6570\u7EC4, "\u6574\u7406\u6210\u6570\u7EC4");
+async function \u8BF7\u6C42\u4F18\u9009API(urls, \u9ED8\u8BA4\u7AEF\u53E3 = "443", \u8D85\u65F6\u65F6\u95F4 = 3e3) {
+  if (!urls?.length) return [];
+  const results = /* @__PURE__ */ new Set();
+  await Promise.allSettled(urls.map(async (url) => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), \u8D85\u65F6\u65F6\u95F4);
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      let text = "";
+      try {
+        const buffer = await response.arrayBuffer();
+        const contentType = (response.headers.get("content-type") || "").toLowerCase();
+        const charset = contentType.match(/charset=([^\s;]+)/i)?.[1]?.toLowerCase() || "";
+        let decoders = ["utf-8", "gb2312"];
+        if (charset.includes("gb") || charset.includes("gbk") || charset.includes("gb2312")) {
+          decoders = ["gb2312", "utf-8"];
+        }
+        let decodeSuccess = false;
+        for (const decoder of decoders) {
+          try {
+            const decoded = new TextDecoder(decoder).decode(buffer);
+            if (decoded && decoded.length > 0 && !decoded.includes("\uFFFD")) {
+              text = decoded;
+              decodeSuccess = true;
+              break;
+            } else if (decoded && decoded.length > 0) {
+              continue;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+        if (!decodeSuccess) {
+          text = await response.text();
+        }
+        if (!text || text.trim().length === 0) {
+          return;
+        }
+      } catch (e) {
+        console.error("Failed to decode response:", e);
+        return;
+      }
+      const lines = text.trim().split("\n").map((l) => l.trim()).filter((l) => l);
+      const isCSV = lines.length > 1 && lines[0].includes(",");
+      const IPV6_PATTERN = /^[^\[\]]*:[^\[\]]*:[^\[\]]/;
+      if (!isCSV) {
+        lines.forEach((line) => {
+          const hashIndex = line.indexOf("#");
+          const [hostPart, remark] = hashIndex > -1 ? [line.substring(0, hashIndex), line.substring(hashIndex)] : [line, ""];
+          let hasPort = false;
+          if (hostPart.startsWith("[")) {
+            hasPort = /\]:(\d+)$/.test(hostPart);
+          } else {
+            const colonIndex = hostPart.lastIndexOf(":");
+            hasPort = colonIndex > -1 && /^\d+$/.test(hostPart.substring(colonIndex + 1));
+          }
+          const port = new URL(url).searchParams.get("port") || \u9ED8\u8BA4\u7AEF\u53E3;
+          results.add(hasPort ? line : `${hostPart}:${port}${remark}`);
+        });
+      } else {
+        const headers = lines[0].split(",").map((h) => h.trim());
+        const dataLines = lines.slice(1);
+        if (headers.includes("IP\u5730\u5740") && headers.includes("\u7AEF\u53E3") && headers.includes("\u6570\u636E\u4E2D\u5FC3")) {
+          const ipIdx = headers.indexOf("IP\u5730\u5740"), portIdx = headers.indexOf("\u7AEF\u53E3");
+          const remarkIdx = headers.indexOf("\u56FD\u5BB6") > -1 ? headers.indexOf("\u56FD\u5BB6") : headers.indexOf("\u57CE\u5E02") > -1 ? headers.indexOf("\u57CE\u5E02") : headers.indexOf("\u6570\u636E\u4E2D\u5FC3");
+          const tlsIdx = headers.indexOf("TLS");
+          dataLines.forEach((line) => {
+            const cols = line.split(",").map((c) => c.trim());
+            if (tlsIdx !== -1 && cols[tlsIdx]?.toLowerCase() !== "true") return;
+            const wrappedIP = IPV6_PATTERN.test(cols[ipIdx]) ? `[${cols[ipIdx]}]` : cols[ipIdx];
+            results.add(`${wrappedIP}:${cols[portIdx]}#${cols[remarkIdx]}`);
+          });
+        } else if (headers.some((h) => h.includes("IP")) && headers.some((h) => h.includes("\u5EF6\u8FDF")) && headers.some((h) => h.includes("\u4E0B\u8F7D\u901F\u5EA6"))) {
+          const ipIdx = headers.findIndex((h) => h.includes("IP"));
+          const delayIdx = headers.findIndex((h) => h.includes("\u5EF6\u8FDF"));
+          const speedIdx = headers.findIndex((h) => h.includes("\u4E0B\u8F7D\u901F\u5EA6"));
+          const port = new URL(url).searchParams.get("port") || \u9ED8\u8BA4\u7AEF\u53E3;
+          dataLines.forEach((line) => {
+            const cols = line.split(",").map((c) => c.trim());
+            const wrappedIP = IPV6_PATTERN.test(cols[ipIdx]) ? `[${cols[ipIdx]}]` : cols[ipIdx];
+            results.add(`${wrappedIP}:${port}#CF\u4F18\u9009 ${cols[delayIdx]}ms ${cols[speedIdx]}MB/s`);
+          });
+        }
+      }
+    } catch (e) {
+    }
+  }));
+  return Array.from(results);
+}
+__name(\u8BF7\u6C42\u4F18\u9009API, "\u8BF7\u6C42\u4F18\u9009API");
+async function fetchAndParseNewIPs(piu) {
+  const url = piu || defaultIPURL;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return [];
+    const text = await response.text();
+    const results = [];
+    const lines = text.trim().replace(/\r/g, "").split("\n");
+    const regex = /^([^:]+):(\d+)#(.*)$/;
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      if (!trimmedLine) continue;
+      const match = trimmedLine.match(regex);
+      if (match) {
+        results.push({
+          ip: match[1],
+          port: parseInt(match[2], 10),
+          name: match[3].trim() || match[1]
+        });
+      }
+    }
+    return results;
+  } catch (error) {
+    return [];
+  }
+}
+__name(fetchAndParseNewIPs, "fetchAndParseNewIPs");
+function generateLinksFromSource(list, user, workerDomain, disableNonTLS = false, customPath = "/") {
+  const CF_HTTP_PORTS = [80, 8080, 8880, 2052, 2082, 2086, 2095];
+  const CF_HTTPS_PORTS = [443, 2053, 2083, 2087, 2096, 8443];
+  const defaultHttpsPorts = [443];
+  const defaultHttpPorts = disableNonTLS ? [] : [80];
+  const links = [];
+  const wsPath = customPath || "/";
+  const proto = "vless";
+  list.forEach((item) => {
+    let nodeNameBase = item.isp ? item.isp.replace(/\s/g, "_") : item.name || item.domain || item.ip;
+    if (item.colo && item.colo.trim()) {
+      nodeNameBase = `${nodeNameBase}-${item.colo.trim()}`;
+    }
+    const safeIP = item.ip.includes(":") ? `[${item.ip}]` : item.ip;
+    let portsToGenerate = [];
+    if (item.port) {
+      const port = item.port;
+      if (CF_HTTPS_PORTS.includes(port)) {
+        portsToGenerate.push({ port, tls: true });
+      } else if (CF_HTTP_PORTS.includes(port)) {
+        portsToGenerate.push({ port, tls: false });
+      } else {
+        portsToGenerate.push({ port, tls: true });
+      }
+    } else {
+      defaultHttpsPorts.forEach((port) => {
+        portsToGenerate.push({ port, tls: true });
+      });
+      defaultHttpPorts.forEach((port) => {
+        portsToGenerate.push({ port, tls: false });
+      });
+    }
+    portsToGenerate.forEach(({ port, tls }) => {
+      if (tls) {
+        const wsNodeName = `${nodeNameBase}-${port}-WS-TLS`;
+        const wsParams = new URLSearchParams({
+          encryption: "none",
+          security: "tls",
+          sni: workerDomain,
+          fp: "chrome",
+          type: "ws",
+          host: workerDomain,
+          path: wsPath
+        });
+        links.push(`${proto}://${user}@${safeIP}:${port}?${wsParams.toString()}#${encodeURIComponent(wsNodeName)}`);
+      } else {
+        const wsNodeName = `${nodeNameBase}-${port}-WS`;
+        const wsParams = new URLSearchParams({
+          encryption: "none",
+          security: "none",
+          type: "ws",
+          host: workerDomain,
+          path: wsPath
+        });
+        links.push(`${proto}://${user}@${safeIP}:${port}?${wsParams.toString()}#${encodeURIComponent(wsNodeName)}`);
+      }
+    });
+  });
+  return links;
+}
+__name(generateLinksFromSource, "generateLinksFromSource");
+async function generateTrojanLinksFromSource(list, user, workerDomain, disableNonTLS = false, customPath = "/") {
+  const CF_HTTP_PORTS = [80, 8080, 8880, 2052, 2082, 2086, 2095];
+  const CF_HTTPS_PORTS = [443, 2053, 2083, 2087, 2096, 8443];
+  const defaultHttpsPorts = [443];
+  const defaultHttpPorts = disableNonTLS ? [] : [80];
+  const links = [];
+  const wsPath = customPath || "/";
+  const password = user;
+  list.forEach((item) => {
+    let nodeNameBase = item.isp ? item.isp.replace(/\s/g, "_") : item.name || item.domain || item.ip;
+    if (item.colo && item.colo.trim()) {
+      nodeNameBase = `${nodeNameBase}-${item.colo.trim()}`;
+    }
+    const safeIP = item.ip.includes(":") ? `[${item.ip}]` : item.ip;
+    let portsToGenerate = [];
+    if (item.port) {
+      const port = item.port;
+      if (CF_HTTPS_PORTS.includes(port)) {
+        portsToGenerate.push({ port, tls: true });
+      } else if (CF_HTTP_PORTS.includes(port)) {
+        if (!disableNonTLS) {
+          portsToGenerate.push({ port, tls: false });
+        }
+      } else {
+        portsToGenerate.push({ port, tls: true });
+      }
+    } else {
+      defaultHttpsPorts.forEach((port) => {
+        portsToGenerate.push({ port, tls: true });
+      });
+      defaultHttpPorts.forEach((port) => {
+        portsToGenerate.push({ port, tls: false });
+      });
+    }
+    portsToGenerate.forEach(({ port, tls }) => {
+      if (tls) {
+        const wsNodeName = `${nodeNameBase}-${port}-Trojan-WS-TLS`;
+        const wsParams = new URLSearchParams({
+          security: "tls",
+          sni: workerDomain,
+          fp: "chrome",
+          type: "ws",
+          host: workerDomain,
+          path: wsPath
+        });
+        links.push(`trojan://${password}@${safeIP}:${port}?${wsParams.toString()}#${encodeURIComponent(wsNodeName)}`);
+      } else {
+        const wsNodeName = `${nodeNameBase}-${port}-Trojan-WS`;
+        const wsParams = new URLSearchParams({
+          security: "none",
+          type: "ws",
+          host: workerDomain,
+          path: wsPath
+        });
+        links.push(`trojan://${password}@${safeIP}:${port}?${wsParams.toString()}#${encodeURIComponent(wsNodeName)}`);
+      }
+    });
+  });
+  return links;
+}
+__name(generateTrojanLinksFromSource, "generateTrojanLinksFromSource");
+function generateVMessLinksFromSource(list, user, workerDomain, disableNonTLS = false, customPath = "/") {
+  const CF_HTTP_PORTS = [80, 8080, 8880, 2052, 2082, 2086, 2095];
+  const CF_HTTPS_PORTS = [443, 2053, 2083, 2087, 2096, 8443];
+  const defaultHttpsPorts = [443];
+  const defaultHttpPorts = disableNonTLS ? [] : [80];
+  const links = [];
+  const wsPath = customPath || "/";
+  list.forEach((item) => {
+    let nodeNameBase = item.isp ? item.isp.replace(/\s/g, "_") : item.name || item.domain || item.ip;
+    if (item.colo && item.colo.trim()) {
+      nodeNameBase = `${nodeNameBase}-${item.colo.trim()}`;
+    }
+    const safeIP = item.ip.includes(":") ? `[${item.ip}]` : item.ip;
+    let portsToGenerate = [];
+    if (item.port) {
+      const port = item.port;
+      if (CF_HTTPS_PORTS.includes(port)) {
+        portsToGenerate.push({ port, tls: true });
+      } else if (CF_HTTP_PORTS.includes(port)) {
+        if (!disableNonTLS) {
+          portsToGenerate.push({ port, tls: false });
+        }
+      } else {
+        portsToGenerate.push({ port, tls: true });
+      }
+    } else {
+      defaultHttpsPorts.forEach((port) => {
+        portsToGenerate.push({ port, tls: true });
+      });
+      defaultHttpPorts.forEach((port) => {
+        portsToGenerate.push({ port, tls: false });
+      });
+    }
+    portsToGenerate.forEach(({ port, tls }) => {
+      const vmessConfig = {
+        v: "2",
+        ps: tls ? `${nodeNameBase}-${port}-VMess-WS-TLS` : `${nodeNameBase}-${port}-VMess-WS`,
+        add: safeIP,
+        port: port.toString(),
+        id: user,
+        aid: "0",
+        scy: "auto",
+        net: "ws",
+        type: "none",
+        host: workerDomain,
+        path: wsPath,
+        tls: tls ? "tls" : "none"
+      };
+      if (tls) {
+        vmessConfig.sni = workerDomain;
+        vmessConfig.fp = "chrome";
+      }
+      const vmessBase64 = btoa(JSON.stringify(vmessConfig));
+      links.push(`vmess://${vmessBase64}`);
+    });
+  });
+  return links;
+}
+__name(generateVMessLinksFromSource, "generateVMessLinksFromSource");
+function generateLinksFromNewIPs(list, user, workerDomain, customPath = "/") {
+  const CF_HTTP_PORTS = [80, 8080, 8880, 2052, 2082, 2086, 2095];
+  const CF_HTTPS_PORTS = [443, 2053, 2083, 2087, 2096, 8443];
+  const links = [];
+  const wsPath = customPath || "/";
+  const proto = "vless";
+  list.forEach((item) => {
+    const nodeName = item.name.replace(/\s/g, "_");
+    const port = item.port;
+    if (CF_HTTPS_PORTS.includes(port)) {
+      const wsNodeName = `${nodeName}-${port}-WS-TLS`;
+      const link = `${proto}://${user}@${item.ip}:${port}?encryption=none&security=tls&sni=${workerDomain}&fp=chrome&type=ws&host=${workerDomain}&path=${wsPath}#${encodeURIComponent(wsNodeName)}`;
+      links.push(link);
+    } else if (CF_HTTP_PORTS.includes(port)) {
+      const wsNodeName = `${nodeName}-${port}-WS`;
+      const link = `${proto}://${user}@${item.ip}:${port}?encryption=none&security=none&type=ws&host=${workerDomain}&path=${wsPath}#${encodeURIComponent(wsNodeName)}`;
+      links.push(link);
+    } else {
+      const wsNodeName = `${nodeName}-${port}-WS-TLS`;
+      const link = `${proto}://${user}@${item.ip}:${port}?encryption=none&security=tls&sni=${workerDomain}&fp=chrome&type=ws&host=${workerDomain}&path=${wsPath}#${encodeURIComponent(wsNodeName)}`;
+      links.push(link);
+    }
+  });
+  return links;
+}
+__name(generateLinksFromNewIPs, "generateLinksFromNewIPs");
+async function handleSubscriptionRequest(request, user, customDomain, piu, ipv4Enabled, ipv6Enabled, ispMobile, ispUnicom, ispTelecom, evEnabled, etEnabled, vmEnabled, disableNonTLS, customPath) {
+  const url = new URL(request.url);
+  const finalLinks = [];
+  const workerDomain = url.hostname;
+  const nodeDomain = customDomain || url.hostname;
+  const target = url.searchParams.get("target") || "base64";
+  const wsPath = customPath || "/";
+  async function addNodesFromList(list) {
+    const hasProtocol = evEnabled || etEnabled || vmEnabled;
+    const useVL = hasProtocol ? evEnabled : true;
+    if (useVL) {
+      finalLinks.push(...generateLinksFromSource(list, user, nodeDomain, disableNonTLS, wsPath));
+    }
+    if (etEnabled) {
+      finalLinks.push(...await generateTrojanLinksFromSource(list, user, nodeDomain, disableNonTLS, wsPath));
+    }
+    if (vmEnabled) {
+      finalLinks.push(...generateVMessLinksFromSource(list, user, nodeDomain, disableNonTLS, wsPath));
+    }
+  }
+  __name(addNodesFromList, "addNodesFromList");
+  const nativeList = [{ ip: workerDomain, isp: "\u539F\u751F\u5730\u5740" }];
+  await addNodesFromList(nativeList);
+  if (epd) {
+    const domainList = directDomains.map((d) => ({ ip: d.domain, isp: d.name || d.domain }));
+    await addNodesFromList(domainList);
+  }
+  if (epi) {
+    try {
+      const dynamicIPList = await fetchDynamicIPs(ipv4Enabled, ipv6Enabled, ispMobile, ispUnicom, ispTelecom);
+      if (dynamicIPList.length > 0) {
+        await addNodesFromList(dynamicIPList);
+      }
+    } catch (error) {
+      console.error("\u83B7\u53D6\u52A8\u6001IP\u5931\u8D25:", error);
+    }
+  }
+  if (egi) {
+    try {
+      if (piu && piu.toLowerCase().startsWith("https://")) {
+        const \u4F18\u9009API\u7684IP = await \u8BF7\u6C42\u4F18\u9009API([piu]);
+        if (\u4F18\u9009API\u7684IP && \u4F18\u9009API\u7684IP.length > 0) {
+          const IP\u5217\u8868 = \u4F18\u9009API\u7684IP.map((\u539F\u59CB\u5730\u5740) => {
+            const regex = /^(\[[\da-fA-F:]+\]|[\d.]+|[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)*)(?::(\d+))?(?:#(.+))?$/;
+            const match = \u539F\u59CB\u5730\u5740.match(regex);
+            if (match) {
+              const \u8282\u70B9\u5730\u5740 = match[1].replace(/[\[\]]/g, "");
+              const \u8282\u70B9\u7AEF\u53E3 = match[2] || 443;
+              const \u8282\u70B9\u5907\u6CE8 = match[3] || \u8282\u70B9\u5730\u5740;
+              return {
+                ip: \u8282\u70B9\u5730\u5740,
+                port: parseInt(\u8282\u70B9\u7AEF\u53E3),
+                name: \u8282\u70B9\u5907\u6CE8
+              };
+            }
+            return null;
+          }).filter((item) => item !== null);
+          if (IP\u5217\u8868.length > 0) {
+            const hasProtocol = evEnabled || etEnabled || vmEnabled;
+            const useVL = hasProtocol ? evEnabled : true;
+            if (useVL) {
+              finalLinks.push(...generateLinksFromNewIPs(IP\u5217\u8868, user, nodeDomain, wsPath));
+            }
+          }
+        }
+      } else if (piu && piu.includes("\n")) {
+        const \u5B8C\u6574\u4F18\u9009\u5217\u8868 = await \u6574\u7406\u6210\u6570\u7EC4(piu);
+        const \u4F18\u9009API = [], \u4F18\u9009IP = [], \u5176\u4ED6\u8282\u70B9 = [];
+        for (const \u5143\u7D20 of \u5B8C\u6574\u4F18\u9009\u5217\u8868) {
+          if (\u5143\u7D20.toLowerCase().startsWith("https://")) {
+            \u4F18\u9009API.push(\u5143\u7D20);
+          } else if (\u5143\u7D20.toLowerCase().includes("://")) {
+            \u5176\u4ED6\u8282\u70B9.push(\u5143\u7D20);
+          } else {
+            \u4F18\u9009IP.push(\u5143\u7D20);
+          }
+        }
+        if (\u4F18\u9009API.length > 0) {
+          const \u4F18\u9009API\u7684IP = await \u8BF7\u6C42\u4F18\u9009API(\u4F18\u9009API);
+          \u4F18\u9009IP.push(...\u4F18\u9009API\u7684IP);
+        }
+        if (\u4F18\u9009IP.length > 0) {
+          const IP\u5217\u8868 = \u4F18\u9009IP.map((\u539F\u59CB\u5730\u5740) => {
+            const regex = /^(\[[\da-fA-F:]+\]|[\d.]+|[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?)*)(?::(\d+))?(?:#(.+))?$/;
+            const match = \u539F\u59CB\u5730\u5740.match(regex);
+            if (match) {
+              const \u8282\u70B9\u5730\u5740 = match[1].replace(/[\[\]]/g, "");
+              const \u8282\u70B9\u7AEF\u53E3 = match[2] || 443;
+              const \u8282\u70B9\u5907\u6CE8 = match[3] || \u8282\u70B9\u5730\u5740;
+              return {
+                ip: \u8282\u70B9\u5730\u5740,
+                port: parseInt(\u8282\u70B9\u7AEF\u53E3),
+                name: \u8282\u70B9\u5907\u6CE8
+              };
+            }
+            return null;
+          }).filter((item) => item !== null);
+          if (IP\u5217\u8868.length > 0) {
+            const hasProtocol = evEnabled || etEnabled || vmEnabled;
+            const useVL = hasProtocol ? evEnabled : true;
+            if (useVL) {
+              finalLinks.push(...generateLinksFromNewIPs(IP\u5217\u8868, user, nodeDomain, wsPath));
+            }
+          }
+        }
+      } else {
+        const newIPList = await fetchAndParseNewIPs(piu);
+        if (newIPList.length > 0) {
+          const hasProtocol = evEnabled || etEnabled || vmEnabled;
+          const useVL = hasProtocol ? evEnabled : true;
+          if (useVL) {
+            finalLinks.push(...generateLinksFromNewIPs(newIPList, user, nodeDomain, wsPath));
+          }
+        }
+      }
+    } catch (error) {
+      console.error("\u83B7\u53D6\u4F18\u9009IP\u5931\u8D25:", error);
+    }
+  }
+  if (finalLinks.length === 0) {
+    const errorRemark = "\u6240\u6709\u8282\u70B9\u83B7\u53D6\u5931\u8D25";
+    const errorLink = `vless://00000000-0000-0000-0000-000000000000@127.0.0.1:80?encryption=none&security=none&type=ws&host=error.com&path=%2F#${encodeURIComponent(errorRemark)}`;
+    finalLinks.push(errorLink);
+  }
+  let subscriptionContent;
+  let contentType = "text/plain; charset=utf-8";
+  switch (target.toLowerCase()) {
+    case "clash":
+    case "clashr":
+      subscriptionContent = generateClashConfig(finalLinks);
+      contentType = "text/yaml; charset=utf-8";
+      break;
+    case "surge":
+    case "surge2":
+    case "surge3":
+    case "surge4":
+      subscriptionContent = generateSurgeConfig(finalLinks);
+      break;
+    case "quantumult":
+    case "quanx":
+      subscriptionContent = generateQuantumultConfig(finalLinks);
+      break;
+    default:
+      subscriptionContent = btoa(finalLinks.join("\n"));
+  }
+  return new Response(subscriptionContent, {
+    headers: {
+      "Content-Type": contentType,
+      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"
+    }
+  });
+}
+__name(handleSubscriptionRequest, "handleSubscriptionRequest");
+function generateClashConfig(links) {
+  let yaml = "port: 7890\n";
+  yaml += "socks-port: 7891\n";
+  yaml += "allow-lan: false\n";
+  yaml += "mode: rule\n";
+  yaml += "log-level: info\n\n";
+  yaml += "proxies:\n";
+  const proxyNames = [];
+  links.forEach((link, index) => {
+    const name = decodeURIComponent(link.split("#")[1] || `\u8282\u70B9${index + 1}`);
+    proxyNames.push(name);
+    const server = link.match(/@([^:]+):(\d+)/)?.[1] || "";
+    const port = link.match(/@[^:]+:(\d+)/)?.[1] || "443";
+    const uuid = link.match(/vless:\/\/([^@]+)@/)?.[1] || "";
+    const tls = link.includes("security=tls");
+    const path = link.match(/path=([^&#]+)/)?.[1] || "/";
+    const host = link.match(/host=([^&#]+)/)?.[1] || "";
+    const sni = link.match(/sni=([^&#]+)/)?.[1] || "";
+    yaml += `  - name: ${name}
+`;
+    yaml += `    type: vless
+`;
+    yaml += `    server: ${server}
+`;
+    yaml += `    port: ${port}
+`;
+    yaml += `    uuid: ${uuid}
+`;
+    yaml += `    tls: ${tls}
+`;
+    yaml += `    network: ws
+`;
+    yaml += `    ws-opts:
+`;
+    yaml += `      path: ${path}
+`;
+    yaml += `      headers:
+`;
+    yaml += `        Host: ${host}
+`;
+    if (sni) {
+      yaml += `    servername: ${sni}
+`;
+    }
+  });
+  yaml += "\nproxy-groups:\n";
+  yaml += "  - name: PROXY\n";
+  yaml += "    type: select\n";
+  yaml += `    proxies: [${proxyNames.map((n) => `'${n}'`).join(", ")}]
+`;
+  yaml += "\nrules:\n";
+  yaml += "  - DOMAIN-SUFFIX,local,DIRECT\n";
+  yaml += "  - IP-CIDR,127.0.0.0/8,DIRECT\n";
+  yaml += "  - GEOIP,CN,DIRECT\n";
+  yaml += "  - MATCH,PROXY\n";
+  return yaml;
+}
+__name(generateClashConfig, "generateClashConfig");
+function generateSurgeConfig(links) {
+  let config = "[Proxy]\n";
+  links.forEach((link) => {
+    const name = decodeURIComponent(link.split("#")[1] || "\u8282\u70B9");
+    config += `${name} = vless, ${link.match(/@([^:]+):(\d+)/)?.[1] || ""}, ${link.match(/@[^:]+:(\d+)/)?.[1] || "443"}, username=${link.match(/vless:\/\/([^@]+)@/)?.[1] || ""}, tls=${link.includes("security=tls")}, ws=true, ws-path=${link.match(/path=([^&#]+)/)?.[1] || "/"}, ws-headers=Host:${link.match(/host=([^&#]+)/)?.[1] || ""}
+`;
+  });
+  config += "\n[Proxy Group]\nPROXY = select, " + links.map((_, i) => decodeURIComponent(links[i].split("#")[1] || `\u8282\u70B9${i + 1}`)).join(", ") + "\n";
+  return config;
+}
+__name(generateSurgeConfig, "generateSurgeConfig");
+function generateQuantumultConfig(links) {
+  return btoa(links.join("\n"));
+}
+__name(generateQuantumultConfig, "generateQuantumultConfig");
+async function testLatency(host, port = 443, timeout = 5e3) {
+  const startTime = Date.now();
+  try {
+    let testHost = host;
+    let testPort = port;
+    if (host.includes(":")) {
+      const parts = host.split(":");
+      testHost = parts[0].replace(/[\[\]]/g, "");
+      testPort = parseInt(parts[1]) || port;
+    }
+    const protocol = testPort === 443 || testPort === 8443 ? "https" : "http";
+    const testUrl = `${protocol}://${testHost}:${testPort}/cdn-cgi/trace`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    try {
+      const response = await fetch(testUrl, {
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+      });
+      clearTimeout(timeoutId);
+      const responseTime = Date.now() - startTime;
+      if (response.ok) {
+        const text = await response.text();
+        const ipMatch = text.match(/ip=([^\s]+)/);
+        const locMatch = text.match(/loc=([^\s]+)/);
+        const coloMatch = text.match(/colo=([^\s]+)/);
+        return {
+          success: true,
+          host,
+          port: testPort,
+          latency: responseTime,
+          ip: ipMatch ? ipMatch[1] : null,
+          location: locMatch ? locMatch[1] : null,
+          colo: coloMatch ? coloMatch[1] : null
+        };
+      } else {
+        return {
+          success: false,
+          host,
+          port: testPort,
+          latency: responseTime,
+          error: `HTTP ${response.status}`
+        };
+      }
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      const responseTime = Date.now() - startTime;
+      if (fetchError.name === "AbortError") {
+        return {
+          success: false,
+          host,
+          port: testPort,
+          latency: timeout,
+          error: "\u8BF7\u6C42\u8D85\u65F6"
+        };
+      }
+      return {
+        success: false,
+        host,
+        port: testPort,
+        latency: responseTime,
+        error: fetchError.message || "\u8FDE\u63A5\u5931\u8D25"
+      };
+    }
+  } catch (error) {
+    const responseTime = Date.now() - startTime;
+    return {
+      success: false,
+      host,
+      port,
+      latency: responseTime,
+      error: error.message || "\u672A\u77E5\u9519\u8BEF"
+    };
+  }
+}
+__name(testLatency, "testLatency");
+async function batchTestLatency(hosts, port = 443, timeout = 5e3, concurrency = 5) {
+  const results = [];
+  const chunks = [];
+  for (let i = 0; i < hosts.length; i += concurrency) {
+    chunks.push(hosts.slice(i, i + concurrency));
+  }
+  for (const chunk of chunks) {
+    const chunkResults = await Promise.allSettled(
+      chunk.map((host) => testLatency(host, port, timeout))
+    );
+    chunkResults.forEach((result, index) => {
+      if (result.status === "fulfilled") {
+        results.push(result.value);
+      } else {
+        results.push({
+          success: false,
+          host: chunk[index],
+          port,
+          latency: timeout,
+          error: result.reason?.message || "\u6D4B\u8BD5\u5931\u8D25"
+        });
+      }
+    });
+  }
+  results.sort((a, b) => {
+    if (a.success && !b.success) return -1;
+    if (!a.success && b.success) return 1;
+    return a.latency - b.latency;
+  });
+  return results;
+}
+__name(batchTestLatency, "batchTestLatency");
 function generateHomePage(scuValue) {
-    const scu = scuValue || 'https://url.v1.mk/sub';
-    return `<!DOCTYPE html>
+  const scu2 = scuValue || "https://url.v1.mk/sub";
+  return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>服务器优选工具</title>
+    <title>\u670D\u52A1\u5668\u4F18\u9009\u5DE5\u5177</title>
     <style>
         * {
             margin: 0;
@@ -1219,50 +1112,50 @@ function generateHomePage(scuValue) {
 <body>
     <div class="container">
         <div class="header">
-            <h1>服务器优选工具</h1>
-            <p>智能优选 • 一键生成</p>
+            <h1>\u670D\u52A1\u5668\u4F18\u9009\u5DE5\u5177</h1>
+            <p>\u667A\u80FD\u4F18\u9009 \u2022 \u4E00\u952E\u751F\u6210</p>
         </div>
         
         <div class="card">
             <div class="form-group">
-                <label>域名</label>
-                <input type="text" id="domain" placeholder="请输入您的域名">
+                <label>\u57DF\u540D</label>
+                <input type="text" id="domain" placeholder="\u8BF7\u8F93\u5165\u60A8\u7684\u57DF\u540D">
             </div>
             
             <div class="form-group">
                 <label>UUID</label>
-                <input type="text" id="uuid" placeholder="请输入UUID">
+                <input type="text" id="uuid" placeholder="\u8BF7\u8F93\u5165UUID">
             </div>
             
             <div class="form-group">
-                <label>WebSocket路径（可选）</label>
-                <input type="text" id="customPath" placeholder="留空则使用默认路径 /" value="/">
-                <small style="display: block; margin-top: 6px; color: #86868b; font-size: 13px;">自定义WebSocket路径，例如：/v2ray 或 /</small>
+                <label>WebSocket\u8DEF\u5F84\uFF08\u53EF\u9009\uFF09</label>
+                <input type="text" id="customPath" placeholder="\u7559\u7A7A\u5219\u4F7F\u7528\u9ED8\u8BA4\u8DEF\u5F84 /" value="/">
+                <small style="display: block; margin-top: 6px; color: #86868b; font-size: 13px;">\u81EA\u5B9A\u4E49WebSocket\u8DEF\u5F84\uFF0C\u4F8B\u5982\uFF1A/v2ray \u6216 /</small>
             </div>
             
             <div class="switch-group">
-                <label>启用优选域名</label>
+                <label>\u542F\u7528\u4F18\u9009\u57DF\u540D</label>
                 <div class="switch active" id="switchDomain" onclick="toggleSwitch('switchDomain')"></div>
             </div>
             
             <div class="switch-group">
-                <label>启用优选IP</label>
+                <label>\u542F\u7528\u4F18\u9009IP</label>
                 <div class="switch active" id="switchIP" onclick="toggleSwitch('switchIP')"></div>
             </div>
             
             <div class="switch-group">
-                <label>启用GitHub优选</label>
+                <label>\u542F\u7528GitHub\u4F18\u9009</label>
                 <div class="switch active" id="switchGitHub" onclick="toggleSwitch('switchGitHub')"></div>
             </div>
             
             <div class="form-group" id="githubUrlGroup" style="margin-top: 12px;">
-                <label>GitHub优选URL（可选）</label>
-                <input type="text" id="githubUrl" placeholder="留空则使用默认地址" style="font-size: 15px;">
-                <small style="display: block; margin-top: 6px; color: #86868b; font-size: 13px;">自定义优选IP列表来源URL，留空则使用默认地址</small>
+                <label>GitHub\u4F18\u9009URL\uFF08\u53EF\u9009\uFF09</label>
+                <input type="text" id="githubUrl" placeholder="\u7559\u7A7A\u5219\u4F7F\u7528\u9ED8\u8BA4\u5730\u5740" style="font-size: 15px;">
+                <small style="display: block; margin-top: 6px; color: #86868b; font-size: 13px;">\u81EA\u5B9A\u4E49\u4F18\u9009IP\u5217\u8868\u6765\u6E90URL\uFF0C\u7559\u7A7A\u5219\u4F7F\u7528\u9ED8\u8BA4\u5730\u5740</small>
             </div>
             
             <div class="form-group" style="margin-top: 24px;">
-                <label>协议选择</label>
+                <label>\u534F\u8BAE\u9009\u62E9</label>
                 <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
                     <div class="switch-group">
                         <label>VLESS (vl)</label>
@@ -1280,7 +1173,7 @@ function generateHomePage(scuValue) {
             </div>
             
             <div class="form-group" style="margin-top: 24px;">
-                <label>客户端选择</label>
+                <label>\u5BA2\u6237\u7AEF\u9009\u62E9</label>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-top: 8px;">
                     <button type="button" class="client-btn" onclick="generateClientLink('clash', 'CLASH')">CLASH</button>
                     <button type="button" class="client-btn" onclick="generateClientLink('clash', 'STASH')">STASH</button>
@@ -1297,7 +1190,7 @@ function generateHomePage(scuValue) {
             </div>
             
             <div class="form-group">
-                <label>IP版本选择</label>
+                <label>IP\u7248\u672C\u9009\u62E9</label>
                 <div style="display: flex; gap: 16px; margin-top: 8px;">
                     <label class="checkbox-label">
                         <input type="checkbox" id="ipv4Enabled" checked>
@@ -1311,58 +1204,58 @@ function generateHomePage(scuValue) {
             </div>
             
             <div class="form-group">
-                <label>运营商选择</label>
+                <label>\u8FD0\u8425\u5546\u9009\u62E9</label>
                 <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px;">
                     <label class="checkbox-label">
                         <input type="checkbox" id="ispMobile" checked>
-                        <span>移动</span>
+                        <span>\u79FB\u52A8</span>
                     </label>
                     <label class="checkbox-label">
                         <input type="checkbox" id="ispUnicom" checked>
-                        <span>联通</span>
+                        <span>\u8054\u901A</span>
                     </label>
                     <label class="checkbox-label">
                         <input type="checkbox" id="ispTelecom" checked>
-                        <span>电信</span>
+                        <span>\u7535\u4FE1</span>
                     </label>
                 </div>
             </div>
             
             <div class="switch-group" style="margin-top: 20px;">
-                <label>仅TLS节点</label>
+                <label>\u4EC5TLS\u8282\u70B9</label>
                 <div class="switch" id="switchTLS" onclick="toggleSwitch('switchTLS')"></div>
             </div>
-            <small style="display: block; margin-top: -12px; margin-bottom: 12px; color: #86868b; font-size: 13px; padding-left: 0;">启用后只生成带TLS的节点，不生成非TLS节点（如80端口）</small>
+            <small style="display: block; margin-top: -12px; margin-bottom: 12px; color: #86868b; font-size: 13px; padding-left: 0;">\u542F\u7528\u540E\u53EA\u751F\u6210\u5E26TLS\u7684\u8282\u70B9\uFF0C\u4E0D\u751F\u6210\u975ETLS\u8282\u70B9\uFF08\u598280\u7AEF\u53E3\uFF09</small>
         </div>
         
         <div class="card" style="margin-top: 16px;">
             <div class="form-group">
-                <label>在线延迟测试</label>
-                <input type="text" id="testHost" placeholder="输入IP或域名，例如: 1.1.1.1 或 example.com" style="margin-bottom: 12px;">
+                <label>\u5728\u7EBF\u5EF6\u8FDF\u6D4B\u8BD5</label>
+                <input type="text" id="testHost" placeholder="\u8F93\u5165IP\u6216\u57DF\u540D\uFF0C\u4F8B\u5982: 1.1.1.1 \u6216 example.com" style="margin-bottom: 12px;">
                 <div style="display: flex; gap: 10px; margin-bottom: 12px;">
-                    <input type="number" id="testPort" placeholder="端口" value="443" style="flex: 1; min-width: 0;">
-                    <input type="number" id="testTimeout" placeholder="超时(ms)" value="5000" style="flex: 1; min-width: 0;">
+                    <input type="number" id="testPort" placeholder="\u7AEF\u53E3" value="443" style="flex: 1; min-width: 0;">
+                    <input type="number" id="testTimeout" placeholder="\u8D85\u65F6(ms)" value="5000" style="flex: 1; min-width: 0;">
                 </div>
-                <button type="button" class="btn btn-secondary" onclick="testSingleLatency()" id="testBtn" style="margin-top: 0;">测试延迟</button>
+                <button type="button" class="btn btn-secondary" onclick="testSingleLatency()" id="testBtn" style="margin-top: 0;">\u6D4B\u8BD5\u5EF6\u8FDF</button>
                 <div id="testResult" style="display: none; margin-top: 12px; padding: 12px; background: rgba(142, 142, 147, 0.12); border-radius: 8px; font-size: 14px;"></div>
             </div>
             
             <div class="form-group" style="margin-top: 24px;">
-                <label>批量测试延迟</label>
-                <textarea id="batchTestHosts" placeholder="每行一个IP或域名，例如：&#10;1.1.1.1&#10;1.0.0.1&#10;example.com" style="width: 100%; padding: 14px 16px; font-size: 15px; font-weight: 400; color: #1d1d1f; background: rgba(142, 142, 147, 0.12); border: none; border-radius: 12px; outline: none; resize: vertical; min-height: 100px; font-family: inherit;"></textarea>
+                <label>\u6279\u91CF\u6D4B\u8BD5\u5EF6\u8FDF</label>
+                <textarea id="batchTestHosts" placeholder="\u6BCF\u884C\u4E00\u4E2AIP\u6216\u57DF\u540D\uFF0C\u4F8B\u5982\uFF1A&#10;1.1.1.1&#10;1.0.0.1&#10;example.com" style="width: 100%; padding: 14px 16px; font-size: 15px; font-weight: 400; color: #1d1d1f; background: rgba(142, 142, 147, 0.12); border: none; border-radius: 12px; outline: none; resize: vertical; min-height: 100px; font-family: inherit;"></textarea>
                 <div style="display: flex; gap: 10px; margin-top: 12px;">
-                    <input type="number" id="batchTestPort" placeholder="端口" value="443" style="flex: 1; min-width: 0;">
-                    <input type="number" id="batchTestTimeout" placeholder="超时(ms)" value="5000" style="flex: 1; min-width: 0;">
+                    <input type="number" id="batchTestPort" placeholder="\u7AEF\u53E3" value="443" style="flex: 1; min-width: 0;">
+                    <input type="number" id="batchTestTimeout" placeholder="\u8D85\u65F6(ms)" value="5000" style="flex: 1; min-width: 0;">
                 </div>
-                <button type="button" class="btn btn-secondary" onclick="testBatchLatency()" id="batchTestBtn" style="margin-top: 12px;">批量测试</button>
+                <button type="button" class="btn btn-secondary" onclick="testBatchLatency()" id="batchTestBtn" style="margin-top: 12px;">\u6279\u91CF\u6D4B\u8BD5</button>
                 <div id="batchTestResult" style="display: none; margin-top: 12px; max-height: 400px; overflow-y: auto;"></div>
             </div>
         </div>
         
         <div class="footer">
-            <p>简化版优选工具 • 仅用于节点生成</p>
+            <p>\u7B80\u5316\u7248\u4F18\u9009\u5DE5\u5177 \u2022 \u4EC5\u7528\u4E8E\u8282\u70B9\u751F\u6210</p>
             <div style="margin-top: 20px; display: flex; justify-content: center; gap: 24px; flex-wrap: wrap;">
-                <a href="https://github.com/byJoey/cfnew" target="_blank" style="color: #007aff; text-decoration: none; font-size: 15px; font-weight: 500;">GitHub 项目</a>
+                <a href="https://github.com/byJoey/cfnew" target="_blank" style="color: #007aff; text-decoration: none; font-size: 15px; font-weight: 500;">GitHub \u9879\u76EE</a>
                 <a href="https://www.youtube.com/@joeyblog" target="_blank" style="color: #007aff; text-decoration: none; font-size: 15px; font-weight: 500;">YouTube @joeyblog</a>
             </div>
         </div>
@@ -1386,8 +1279,8 @@ function generateHomePage(scuValue) {
         }
         
         
-        // 订阅转换地址（从服务器注入）
-        const SUB_CONVERTER_URL = "${ scu }";
+        // \u8BA2\u9605\u8F6C\u6362\u5730\u5740\uFF08\u4ECE\u670D\u52A1\u5668\u6CE8\u5165\uFF09
+        const SUB_CONVERTER_URL = "${scu2}";
         
         function tryOpenApp(schemeUrl, fallbackCallback, timeout) {
             timeout = timeout || 2500;
@@ -1440,18 +1333,18 @@ function generateHomePage(scuValue) {
             const customPath = document.getElementById('customPath').value.trim() || '/';
             
             if (!domain || !uuid) {
-                alert('请先填写域名和UUID');
+                alert('\u8BF7\u5148\u586B\u5199\u57DF\u540D\u548CUUID');
                 return;
             }
             
             if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid)) {
-                alert('UUID格式不正确');
+                alert('UUID\u683C\u5F0F\u4E0D\u6B63\u786E');
                 return;
             }
             
-            // 检查至少选择一个协议
+            // \u68C0\u67E5\u81F3\u5C11\u9009\u62E9\u4E00\u4E2A\u534F\u8BAE
             if (!switches.switchVL && !switches.switchTJ && !switches.switchVM) {
-                alert('请至少选择一个协议（VLESS、Trojan或VMess）');
+                alert('\u8BF7\u81F3\u5C11\u9009\u62E9\u4E00\u4E2A\u534F\u8BAE\uFF08VLESS\u3001Trojan\u6216VMess\uFF09');
                 return;
             }
             
@@ -1467,12 +1360,12 @@ function generateHomePage(scuValue) {
             const baseUrl = currentUrl.origin;
             let subscriptionUrl = \`\${baseUrl}/\${uuid}/sub?domain=\${encodeURIComponent(domain)}&epd=\${switches.switchDomain ? 'yes' : 'no'}&epi=\${switches.switchIP ? 'yes' : 'no'}&egi=\${switches.switchGitHub ? 'yes' : 'no'}\`;
             
-            // 添加GitHub优选URL
+            // \u6DFB\u52A0GitHub\u4F18\u9009URL
             if (githubUrl) {
                 subscriptionUrl += \`&piu=\${encodeURIComponent(githubUrl)}\`;
             }
             
-            // 添加协议选择
+            // \u6DFB\u52A0\u534F\u8BAE\u9009\u62E9
             if (switches.switchVL) subscriptionUrl += '&ev=yes';
             if (switches.switchTJ) subscriptionUrl += '&et=yes';
             if (switches.switchVM) subscriptionUrl += '&vm=yes';
@@ -1483,10 +1376,10 @@ function generateHomePage(scuValue) {
             if (!ispUnicom) subscriptionUrl += '&ispUnicom=no';
             if (!ispTelecom) subscriptionUrl += '&ispTelecom=no';
             
-            // 添加TLS控制
+            // \u6DFB\u52A0TLS\u63A7\u5236
             if (switches.switchTLS) subscriptionUrl += '&dkby=yes';
             
-            // 添加自定义路径
+            // \u6DFB\u52A0\u81EA\u5B9A\u4E49\u8DEF\u5F84
             if (customPath && customPath !== '/') {
                 subscriptionUrl += \`&path=\${encodeURIComponent(customPath)}\`;
             }
@@ -1503,27 +1396,27 @@ function generateHomePage(scuValue) {
                 
                 if (clientName === 'V2RAY') {
                     navigator.clipboard.writeText(finalUrl).then(() => {
-                        alert(displayName + ' 订阅链接已复制');
+                        alert(displayName + ' \u8BA2\u9605\u94FE\u63A5\u5DF2\u590D\u5236');
                     });
                 } else if (clientName === 'Shadowrocket') {
                     schemeUrl = 'shadowrocket://add/' + encodeURIComponent(finalUrl);
                     tryOpenApp(schemeUrl, () => {
                         navigator.clipboard.writeText(finalUrl).then(() => {
-                            alert(displayName + ' 订阅链接已复制');
+                            alert(displayName + ' \u8BA2\u9605\u94FE\u63A5\u5DF2\u590D\u5236');
                         });
                     });
                 } else if (clientName === 'V2RAYNG') {
                     schemeUrl = 'v2rayng://install?url=' + encodeURIComponent(finalUrl);
                     tryOpenApp(schemeUrl, () => {
                         navigator.clipboard.writeText(finalUrl).then(() => {
-                            alert(displayName + ' 订阅链接已复制');
+                            alert(displayName + ' \u8BA2\u9605\u94FE\u63A5\u5DF2\u590D\u5236');
                         });
                     });
                 } else if (clientName === 'NEKORAY') {
                     schemeUrl = 'nekoray://install-config?url=' + encodeURIComponent(finalUrl);
                     tryOpenApp(schemeUrl, () => {
                         navigator.clipboard.writeText(finalUrl).then(() => {
-                            alert(displayName + ' 订阅链接已复制');
+                            alert(displayName + ' \u8BA2\u9605\u94FE\u63A5\u5DF2\u590D\u5236');
                         });
                     });
                 }
@@ -1560,18 +1453,18 @@ function generateHomePage(scuValue) {
                 if (schemeUrl) {
                     tryOpenApp(schemeUrl, () => {
                         navigator.clipboard.writeText(finalUrl).then(() => {
-                            alert(displayName + ' 订阅链接已复制');
+                            alert(displayName + ' \u8BA2\u9605\u94FE\u63A5\u5DF2\u590D\u5236');
                         });
                     });
                 } else {
                     navigator.clipboard.writeText(finalUrl).then(() => {
-                        alert(displayName + ' 订阅链接已复制');
+                        alert(displayName + ' \u8BA2\u9605\u94FE\u63A5\u5DF2\u590D\u5236');
                     });
                 }
             }
         }
         
-        // 单个延迟测试
+        // \u5355\u4E2A\u5EF6\u8FDF\u6D4B\u8BD5
         async function testSingleLatency() {
             const host = document.getElementById('testHost').value.trim();
             const port = parseInt(document.getElementById('testPort').value) || 443;
@@ -1580,12 +1473,12 @@ function generateHomePage(scuValue) {
             const testResult = document.getElementById('testResult');
             
             if (!host) {
-                alert('请输入要测试的IP或域名');
+                alert('\u8BF7\u8F93\u5165\u8981\u6D4B\u8BD5\u7684IP\u6216\u57DF\u540D');
                 return;
             }
             
             testBtn.disabled = true;
-            testBtn.textContent = '测试中...';
+            testBtn.textContent = '\u6D4B\u8BD5\u4E2D...';
             testResult.style.display = 'none';
             
             try {
@@ -1600,35 +1493,35 @@ function generateHomePage(scuValue) {
                 
                 if (result.success) {
                     testResult.innerHTML = \`
-                        <div style="color: #34c759; font-weight: 600; margin-bottom: 8px;">✓ 测试成功</div>
-                        <div style="color: #1d1d1f; margin-bottom: 4px;"><strong>延迟:</strong> \${result.latency}ms</div>
+                        <div style="color: #34c759; font-weight: 600; margin-bottom: 8px;">\u2713 \u6D4B\u8BD5\u6210\u529F</div>
+                        <div style="color: #1d1d1f; margin-bottom: 4px;"><strong>\u5EF6\u8FDF:</strong> \${result.latency}ms</div>
                         \${result.ip ? \`<div style="color: #1d1d1f; margin-bottom: 4px;"><strong>IP:</strong> \${result.ip}</div>\` : ''}
-                        \${result.location ? \`<div style="color: #1d1d1f; margin-bottom: 4px;"><strong>位置:</strong> \${result.location}</div>\` : ''}
-                        \${result.colo ? \`<div style="color: #1d1d1f;"><strong>数据中心:</strong> \${result.colo}</div>\` : ''}
+                        \${result.location ? \`<div style="color: #1d1d1f; margin-bottom: 4px;"><strong>\u4F4D\u7F6E:</strong> \${result.location}</div>\` : ''}
+                        \${result.colo ? \`<div style="color: #1d1d1f;"><strong>\u6570\u636E\u4E2D\u5FC3:</strong> \${result.colo}</div>\` : ''}
                     \`;
                     testResult.style.background = 'rgba(52, 199, 89, 0.1)';
                 } else {
                     testResult.innerHTML = \`
-                        <div style="color: #ff3b30; font-weight: 600; margin-bottom: 8px;">✗ 测试失败</div>
-                        <div style="color: #1d1d1f; margin-bottom: 4px;"><strong>延迟:</strong> \${result.latency}ms</div>
-                        <div style="color: #1d1d1f;"><strong>错误:</strong> \${result.error || '未知错误'}</div>
+                        <div style="color: #ff3b30; font-weight: 600; margin-bottom: 8px;">\u2717 \u6D4B\u8BD5\u5931\u8D25</div>
+                        <div style="color: #1d1d1f; margin-bottom: 4px;"><strong>\u5EF6\u8FDF:</strong> \${result.latency}ms</div>
+                        <div style="color: #1d1d1f;"><strong>\u9519\u8BEF:</strong> \${result.error || '\u672A\u77E5\u9519\u8BEF'}</div>
                     \`;
                     testResult.style.background = 'rgba(255, 59, 48, 0.1)';
                 }
             } catch (error) {
                 testResult.style.display = 'block';
                 testResult.innerHTML = \`
-                    <div style="color: #ff3b30; font-weight: 600;">✗ 测试失败</div>
-                    <div style="color: #1d1d1f; margin-top: 4px;">\${error.message || '网络错误'}</div>
+                    <div style="color: #ff3b30; font-weight: 600;">\u2717 \u6D4B\u8BD5\u5931\u8D25</div>
+                    <div style="color: #1d1d1f; margin-top: 4px;">\${error.message || '\u7F51\u7EDC\u9519\u8BEF'}</div>
                 \`;
                 testResult.style.background = 'rgba(255, 59, 48, 0.1)';
             } finally {
                 testBtn.disabled = false;
-                testBtn.textContent = '测试延迟';
+                testBtn.textContent = '\u6D4B\u8BD5\u5EF6\u8FDF';
             }
         }
         
-        // 批量延迟测试
+        // \u6279\u91CF\u5EF6\u8FDF\u6D4B\u8BD5
         async function testBatchLatency() {
             const hostsText = document.getElementById('batchTestHosts').value.trim();
             const port = parseInt(document.getElementById('batchTestPort').value) || 443;
@@ -1637,7 +1530,7 @@ function generateHomePage(scuValue) {
             const batchTestResult = document.getElementById('batchTestResult');
             
             if (!hostsText) {
-                alert('请输入要测试的IP或域名列表');
+                alert('\u8BF7\u8F93\u5165\u8981\u6D4B\u8BD5\u7684IP\u6216\u57DF\u540D\u5217\u8868');
                 return;
             }
             
@@ -1646,12 +1539,12 @@ function generateHomePage(scuValue) {
                 .filter(line => line.length > 0);
             
             if (hosts.length === 0) {
-                alert('请输入至少一个IP或域名');
+                alert('\u8BF7\u8F93\u5165\u81F3\u5C11\u4E00\u4E2AIP\u6216\u57DF\u540D');
                 return;
             }
             
             batchTestBtn.disabled = true;
-            batchTestBtn.textContent = \`测试中... (0/\${hosts.length})\`;
+            batchTestBtn.textContent = \`\u6D4B\u8BD5\u4E2D... (0/\${hosts.length})\`;
             batchTestResult.style.display = 'none';
             batchTestResult.innerHTML = '';
             
@@ -1678,15 +1571,15 @@ function generateHomePage(scuValue) {
                     batchTestResult.style.display = 'block';
                     let html = \`
                         <div style="padding: 12px; background: rgba(142, 142, 147, 0.12); border-radius: 8px; margin-bottom: 12px;">
-                            <div style="font-weight: 600; margin-bottom: 4px;">测试完成</div>
-                            <div style="font-size: 13px; color: #86868b;">成功: \${data.successCount} / 总计: \${data.total}</div>
+                            <div style="font-weight: 600; margin-bottom: 4px;">\u6D4B\u8BD5\u5B8C\u6210</div>
+                            <div style="font-size: 13px; color: #86868b;">\u6210\u529F: \${data.successCount} / \u603B\u8BA1: \${data.total}</div>
                         </div>
                     \`;
                     
                     data.results.forEach((result, index) => {
                         const bgColor = result.success ? 'rgba(52, 199, 89, 0.1)' : 'rgba(255, 59, 48, 0.1)';
                         const statusColor = result.success ? '#34c759' : '#ff3b30';
-                        const statusText = result.success ? '✓' : '✗';
+                        const statusText = result.success ? '\u2713' : '\u2717';
                         
                         html += \`
                             <div style="padding: 12px; background: \${bgColor}; border-radius: 8px; margin-bottom: 8px;">
@@ -1696,10 +1589,10 @@ function generateHomePage(scuValue) {
                                 </div>
                                 \${result.success ? \`
                                     \${result.ip ? \`<div style="font-size: 13px; color: #86868b;">IP: \${result.ip}</div>\` : ''}
-                                    \${result.location ? \`<div style="font-size: 13px; color: #86868b;">位置: \${result.location}</div>\` : ''}
-                                    \${result.colo ? \`<div style="font-size: 13px; color: #86868b;">数据中心: \${result.colo}</div>\` : ''}
+                                    \${result.location ? \`<div style="font-size: 13px; color: #86868b;">\u4F4D\u7F6E: \${result.location}</div>\` : ''}
+                                    \${result.colo ? \`<div style="font-size: 13px; color: #86868b;">\u6570\u636E\u4E2D\u5FC3: \${result.colo}</div>\` : ''}
                                 \` : \`
-                                    <div style="font-size: 13px; color: #ff3b30;">错误: \${result.error || '未知错误'}</div>
+                                    <div style="font-size: 13px; color: #ff3b30;">\u9519\u8BEF: \${result.error || '\u672A\u77E5\u9519\u8BEF'}</div>
                                 \`}
                             </div>
                         \`;
@@ -1710,7 +1603,7 @@ function generateHomePage(scuValue) {
                     batchTestResult.style.display = 'block';
                     batchTestResult.innerHTML = \`
                         <div style="padding: 12px; background: rgba(255, 59, 48, 0.1); border-radius: 8px; color: #ff3b30;">
-                            测试失败: \${data.error || '未知错误'}
+                            \u6D4B\u8BD5\u5931\u8D25: \${data.error || '\u672A\u77E5\u9519\u8BEF'}
                         </div>
                     \`;
                 }
@@ -1718,16 +1611,16 @@ function generateHomePage(scuValue) {
                 batchTestResult.style.display = 'block';
                 batchTestResult.innerHTML = \`
                     <div style="padding: 12px; background: rgba(255, 59, 48, 0.1); border-radius: 8px; color: #ff3b30;">
-                        网络错误: \${error.message || '未知错误'}
+                        \u7F51\u7EDC\u9519\u8BEF: \${error.message || '\u672A\u77E5\u9519\u8BEF'}
                     </div>
                 \`;
             } finally {
                 batchTestBtn.disabled = false;
-                batchTestBtn.textContent = '批量测试';
+                batchTestBtn.textContent = '\u6279\u91CF\u6D4B\u8BD5';
             }
         }
         
-        // 支持回车键触发测试
+        // \u652F\u6301\u56DE\u8F66\u952E\u89E6\u53D1\u6D4B\u8BD5
         document.addEventListener('DOMContentLoaded', function() {
             const testHostInput = document.getElementById('testHost');
             if (testHostInput) {
@@ -1738,212 +1631,180 @@ function generateHomePage(scuValue) {
                 });
             }
         });
-    </script>
+    <\/script>
 </body>
 </html>`;
 }
-
-// 主处理函数
-export default {
-    async fetch(request, env, ctx) {
-        const url = new URL(request.url);
-        const path = url.pathname;
-        
-        // 主页
-        if (path === '/' || path === '') {
-            const scuValue = env?.scu || scu;
-            return new Response(generateHomePage(scuValue), {
-                headers: { 'Content-Type': 'text/html; charset=utf-8' }
-            });
-        }
-        
-        // 在线测试延迟 API: /test?host=xxx&port=443
-        if (path === '/test') {
-            const host = url.searchParams.get('host');
-            const port = parseInt(url.searchParams.get('port') || '443');
-            const timeout = parseInt(url.searchParams.get('timeout') || '5000');
-            
-            if (!host) {
-                return new Response(JSON.stringify({ 
-                    success: false, 
-                    error: '缺少host参数' 
-                }), {
-                    status: 400,
-                    headers: { 'Content-Type': 'application/json; charset=utf-8' }
-                });
-            }
-            
-            const result = await testLatency(host, port, timeout);
-            return new Response(JSON.stringify(result, null, 2), {
-                headers: { 
-                    'Content-Type': 'application/json; charset=utf-8',
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-                    'Access-Control-Allow-Headers': 'Content-Type'
-                }
-            });
-        }
-        
-        // 批量测试延迟 API: /batch-test
-        if (path === '/batch-test') {
-            if (request.method === 'OPTIONS') {
-                return new Response(null, {
-                    headers: {
-                        'Access-Control-Allow-Origin': '*',
-                        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                        'Access-Control-Allow-Headers': 'Content-Type'
-                    }
-                });
-            }
-            
-            if (request.method === 'POST') {
-                try {
-                    const body = await request.json();
-                    const hosts = body.hosts || [];
-                    const port = parseInt(body.port || '443');
-                    const timeout = parseInt(body.timeout || '5000');
-                    const concurrency = parseInt(body.concurrency || '5');
-                    
-                    if (!Array.isArray(hosts) || hosts.length === 0) {
-                        return new Response(JSON.stringify({ 
-                            success: false, 
-                            error: 'hosts必须是非空数组' 
-                        }), {
-                            status: 400,
-                            headers: { 
-                                'Content-Type': 'application/json; charset=utf-8',
-                                'Access-Control-Allow-Origin': '*'
-                            }
-                        });
-                    }
-                    
-                    const results = await batchTestLatency(hosts, port, timeout, concurrency);
-                    return new Response(JSON.stringify({ 
-                        success: true, 
-                        results: results,
-                        total: results.length,
-                        successCount: results.filter(r => r.success).length
-                    }, null, 2), {
-                        headers: { 
-                            'Content-Type': 'application/json; charset=utf-8',
-                            'Access-Control-Allow-Origin': '*'
-                        }
-                    });
-                } catch (error) {
-                    return new Response(JSON.stringify({ 
-                        success: false, 
-                        error: error.message 
-                    }), {
-                        status: 500,
-                        headers: { 
-                            'Content-Type': 'application/json; charset=utf-8',
-                            'Access-Control-Allow-Origin': '*'
-                        }
-                    });
-                }
-            }
-        }
-        
-        // 测试优选API API: /test-optimize-api?url=xxx&port=443
-        if (path === '/test-optimize-api') {
-            if (request.method === 'OPTIONS') {
-                return new Response(null, {
-                    headers: {
-                        'Access-Control-Allow-Origin': '*',
-                        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-                        'Access-Control-Allow-Headers': 'Content-Type'
-                    }
-                });
-            }
-            
-            const apiUrl = url.searchParams.get('url');
-            const port = url.searchParams.get('port') || '443';
-            const timeout = parseInt(url.searchParams.get('timeout') || '3000');
-            
-            if (!apiUrl) {
-                return new Response(JSON.stringify({ 
-                    success: false, 
-                    error: '缺少url参数' 
-                }), {
-                    status: 400,
-                    headers: { 
-                        'Content-Type': 'application/json; charset=utf-8',
-                        'Access-Control-Allow-Origin': '*'
-                    }
-                });
-            }
-            
-            try {
-                const results = await 请求优选API([apiUrl], port, timeout);
-                return new Response(JSON.stringify({ 
-                    success: true, 
-                    results: results,
-                    total: results.length,
-                    message: `成功获取 ${results.length} 个优选IP`
-                }, null, 2), {
-                    headers: { 
-                        'Content-Type': 'application/json; charset=utf-8',
-                        'Access-Control-Allow-Origin': '*'
-                    }
-                });
-            } catch (error) {
-                return new Response(JSON.stringify({ 
-                    success: false, 
-                    error: error.message 
-                }), {
-                    status: 500,
-                    headers: { 
-                        'Content-Type': 'application/json; charset=utf-8',
-                        'Access-Control-Allow-Origin': '*'
-                    }
-                });
-            }
-        }
-        
-        // 订阅请求格式: /{UUID}/sub?domain=xxx&epd=yes&epi=yes&egi=yes
-        const pathMatch = path.match(/^\/([^\/]+)\/sub$/);
-        if (pathMatch) {
-            const uuid = pathMatch[1];
-            
-            if (!isValidUUID(uuid)) {
-                return new Response('无效的UUID格式', { status: 400 });
-            }
-            
-            const domain = url.searchParams.get('domain');
-            if (!domain) {
-                return new Response('缺少域名参数', { status: 400 });
-            }
-            
-            // 从URL参数获取配置
-            epd = url.searchParams.get('epd') !== 'no';
-            epi = url.searchParams.get('epi') !== 'no';
-            egi = url.searchParams.get('egi') !== 'no';
-            const piu = url.searchParams.get('piu') || defaultIPURL;
-            
-            // 协议选择
-            const evEnabled = url.searchParams.get('ev') === 'yes' || (url.searchParams.get('ev') === null && ev);
-            const etEnabled = url.searchParams.get('et') === 'yes';
-            const vmEnabled = url.searchParams.get('vm') === 'yes';
-            
-            // IPv4/IPv6选择
-            const ipv4Enabled = url.searchParams.get('ipv4') !== 'no';
-            const ipv6Enabled = url.searchParams.get('ipv6') !== 'no';
-            
-            // 运营商选择
-            const ispMobile = url.searchParams.get('ispMobile') !== 'no';
-            const ispUnicom = url.searchParams.get('ispUnicom') !== 'no';
-            const ispTelecom = url.searchParams.get('ispTelecom') !== 'no';
-            
-            // TLS控制
-            const disableNonTLS = url.searchParams.get('dkby') === 'yes';
-            
-            // 自定义路径
-            const customPath = url.searchParams.get('path') || '/';
-            
-            return await handleSubscriptionRequest(request, uuid, domain, piu, ipv4Enabled, ipv6Enabled, ispMobile, ispUnicom, ispTelecom, evEnabled, etEnabled, vmEnabled, disableNonTLS, customPath);
-        }
-        
-        return new Response('Not Found', { status: 404 });
+__name(generateHomePage, "generateHomePage");
+var worker_default = {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    const path = url.pathname;
+    if (path === "/" || path === "") {
+      const scuValue = env?.scu || scu;
+      return new Response(generateHomePage(scuValue), {
+        headers: { "Content-Type": "text/html; charset=utf-8" }
+      });
     }
+    if (path === "/test") {
+      const host = url.searchParams.get("host");
+      const port = parseInt(url.searchParams.get("port") || "443");
+      const timeout = parseInt(url.searchParams.get("timeout") || "5000");
+      if (!host) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: "\u7F3A\u5C11host\u53C2\u6570"
+        }), {
+          status: 400,
+          headers: { "Content-Type": "application/json; charset=utf-8" }
+        });
+      }
+      const result = await testLatency(host, port, timeout);
+      return new Response(JSON.stringify(result, null, 2), {
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type"
+        }
+      });
+    }
+    if (path === "/batch-test") {
+      if (request.method === "OPTIONS") {
+        return new Response(null, {
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type"
+          }
+        });
+      }
+      if (request.method === "POST") {
+        try {
+          const body = await request.json();
+          const hosts = body.hosts || [];
+          const port = parseInt(body.port || "443");
+          const timeout = parseInt(body.timeout || "5000");
+          const concurrency = parseInt(body.concurrency || "5");
+          if (!Array.isArray(hosts) || hosts.length === 0) {
+            return new Response(JSON.stringify({
+              success: false,
+              error: "hosts\u5FC5\u987B\u662F\u975E\u7A7A\u6570\u7EC4"
+            }), {
+              status: 400,
+              headers: {
+                "Content-Type": "application/json; charset=utf-8",
+                "Access-Control-Allow-Origin": "*"
+              }
+            });
+          }
+          const results = await batchTestLatency(hosts, port, timeout, concurrency);
+          return new Response(JSON.stringify({
+            success: true,
+            results,
+            total: results.length,
+            successCount: results.filter((r) => r.success).length
+          }, null, 2), {
+            headers: {
+              "Content-Type": "application/json; charset=utf-8",
+              "Access-Control-Allow-Origin": "*"
+            }
+          });
+        } catch (error) {
+          return new Response(JSON.stringify({
+            success: false,
+            error: error.message
+          }), {
+            status: 500,
+            headers: {
+              "Content-Type": "application/json; charset=utf-8",
+              "Access-Control-Allow-Origin": "*"
+            }
+          });
+        }
+      }
+    }
+    if (path === "/test-optimize-api") {
+      if (request.method === "OPTIONS") {
+        return new Response(null, {
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type"
+          }
+        });
+      }
+      const apiUrl = url.searchParams.get("url");
+      const port = url.searchParams.get("port") || "443";
+      const timeout = parseInt(url.searchParams.get("timeout") || "3000");
+      if (!apiUrl) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: "\u7F3A\u5C11url\u53C2\u6570"
+        }), {
+          status: 400,
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Access-Control-Allow-Origin": "*"
+          }
+        });
+      }
+      try {
+        const results = await \u8BF7\u6C42\u4F18\u9009API([apiUrl], port, timeout);
+        return new Response(JSON.stringify({
+          success: true,
+          results,
+          total: results.length,
+          message: `\u6210\u529F\u83B7\u53D6 ${results.length} \u4E2A\u4F18\u9009IP`
+        }, null, 2), {
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Access-Control-Allow-Origin": "*"
+          }
+        });
+      } catch (error) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: error.message
+        }), {
+          status: 500,
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Access-Control-Allow-Origin": "*"
+          }
+        });
+      }
+    }
+    const pathMatch = path.match(/^\/([^\/]+)\/sub$/);
+    if (pathMatch) {
+      const uuid = pathMatch[1];
+      if (!isValidUUID(uuid)) {
+        return new Response("\u65E0\u6548\u7684UUID\u683C\u5F0F", { status: 400 });
+      }
+      const domain = url.searchParams.get("domain");
+      if (!domain) {
+        return new Response("\u7F3A\u5C11\u57DF\u540D\u53C2\u6570", { status: 400 });
+      }
+      epd = url.searchParams.get("epd") !== "no";
+      epi = url.searchParams.get("epi") !== "no";
+      egi = url.searchParams.get("egi") !== "no";
+      const piu = url.searchParams.get("piu") || defaultIPURL;
+      const evEnabled = url.searchParams.get("ev") === "yes" || url.searchParams.get("ev") === null && ev;
+      const etEnabled = url.searchParams.get("et") === "yes";
+      const vmEnabled = url.searchParams.get("vm") === "yes";
+      const ipv4Enabled = url.searchParams.get("ipv4") !== "no";
+      const ipv6Enabled = url.searchParams.get("ipv6") !== "no";
+      const ispMobile = url.searchParams.get("ispMobile") !== "no";
+      const ispUnicom = url.searchParams.get("ispUnicom") !== "no";
+      const ispTelecom = url.searchParams.get("ispTelecom") !== "no";
+      const disableNonTLS = url.searchParams.get("dkby") === "yes";
+      const customPath = url.searchParams.get("path") || "/";
+      return await handleSubscriptionRequest(request, uuid, domain, piu, ipv4Enabled, ipv6Enabled, ispMobile, ispUnicom, ispTelecom, evEnabled, etEnabled, vmEnabled, disableNonTLS, customPath);
+    }
+    return new Response("Not Found", { status: 404 });
+  }
 };
-
+export {
+  worker_default as default
+};
+//# sourceMappingURL=_worker.js.map
